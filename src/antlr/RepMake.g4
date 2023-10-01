@@ -1,18 +1,22 @@
 grammar RepMake;
 
-repmake: (rep_make_rule | comment)+ EOF;
+// Lex
+COMMENT: '#' .*? NEW_LINE -> channel(HIDDEN);
+IDENT: NEW_LINE (' ' | '\t')+;
+SPACE: ' ' -> channel(HIDDEN);
+NEW_LINE: '\n'+;
+IDENTIFIER: [a-zA-Z0-9_]+;
 
-comment: '#' ~'\n'* '\n'*;
 
-// Rules and dependicies
+
+// Parse
+repmake: (rep_make_rule | COMMENT)+ EOF;
+
 rep_make_rule:
-	RULE_NAME ':' dependency_list '\n'+ ('\n' | TASK)*;
+	rule_name ':' dependency_list NEW_LINE+ (NEW_LINE | task)*;
 
-dependency_list: RULE_NAME ( ',' RULE_NAME)*?;
-RULE_NAME: SYMBOL;
-SYMBOL: [a-zA-Z0-9_]+;
+dependency_list: rule_name ( ',' rule_name)*?;
 
-// Tasks
-TASK: '\t'+ (SYMBOL | ' ')+;
-
-WHITESPACE: (' ')+ -> skip;
+task: '\t' identifier_list;
+rule_name: IDENTIFIER;
+identifier_list: (IDENTIFIER ' '?)+;
