@@ -18,11 +18,11 @@ int main(int argc, const char* argv[]) {
     ANTLRInputStream input(stream);
     input.name = inputFile;
     RepMakeLexer lexer(&input);
-    {
+    if (true) {
         auto vocab = lexer.getVocabulary();
         std::vector<std::unique_ptr<Token>> tokens = lexer.getAllTokens();
         for (std::unique_ptr<Token>& token : tokens) {
-            if (token->getChannel() != Token::DEFAULT_CHANNEL){
+            if (token->getChannel() != Token::DEFAULT_CHANNEL) {
                 continue;
             }
             // std::cout << token->getChannel();
@@ -46,7 +46,7 @@ int main(int argc, const char* argv[]) {
     auto rules = context->rep_make_rule();
     bool error_flag = false;
     for (auto rule : rules) {
-        std::string rule_name = rule->rule_name()->getText();
+        std::string rule_name = rule->rule_name()->IDENTIFIER()->getText();
         bool duplicate = !all_rules.insert(rule_name).second;
         if (duplicate) {
             std::cerr << "Error: Duplicate rule defined: \"" << rule_name << "\"" << std::endl;
@@ -56,9 +56,9 @@ int main(int argc, const char* argv[]) {
     for (auto rule : rules) {
         auto dependency_rules = rule->dependency_list()->rule_name();
 
-        std::string rule_name = rule->rule_name()->getText();
+        std::string rule_name = rule->rule_name()->IDENTIFIER()->getText();
         for (auto dependency : dependency_rules) {
-            std::string dep_name = dependency->getText();
+            std::string dep_name = dependency->IDENTIFIER()->getText();
             if (dep_name == rule_name) {
                 std::cerr << "Error: \"" << dep_name << "\" depends on itself." << std::endl;
             }
@@ -73,8 +73,11 @@ int main(int argc, const char* argv[]) {
         return -1;
     }
     for (auto rule : rules) {
-        auto tasks = rule->task();
-        for (auto task : tasks) {
+        auto tasks = rule->tasks();
+        if (tasks == NULL) {
+            continue;
+        }
+        for (RepMakeParser::TaskContext* task : tasks->task()) {
             std::cout << "Task:" << task->getText() << std::endl;
         }
     }
