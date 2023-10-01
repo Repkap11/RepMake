@@ -7,18 +7,30 @@ MAKEFLAGS += --warn-undefined-variables
 MAKEFLAGS += --jobs=$(CPUS)
 MAKEFLAGS += --no-print-directory
 
-CFLAGS := -Wall -Wextra -std=c++11 -Wno-unused-parameter -Wno-unused-variable
+# Remove built in rules
+MAKEFLAGS += --no-builtin-rules
 
-OBJECTS := $(patsubst src/cpp/%.cpp,out/%.o, $(wildcard src/cpp/*.cpp))
-INCLUDES := -I include/
+# Use -Wno-attributes due to an antlr bug https://github.com/antlr/antlr4/issues/3217
+CFLAGS_ANTLR = -std=c++11 -Wno-attributes
+CFLAGS_CPP = -Wall -Wextra -std=c++11 -Wno-unused-parameter -Wno-unused-variable -Wno-attributes
+
+OBJECTS = \
+	$(patsubst src/cpp/%.cpp,out/%.o, $(wildcard src/cpp/*.cpp)) \
+	$(patsubst out/antlr_src/%.cpp,out/antlr_out/%.o, $(wildcard out/antlr_src/*.cpp)) \
+	out/antlr_runtime/runtime/libantlr4_cpp_runtime.a
+
+INCLUDES_ANTLR = -I libs/antlr4-cpp-runtime/runtime/src/
+INCLUDES_CPP = $(INCLUDES_ANTLR) -I include/  -I out/antlr_src
 # CFLAGS += -O3
 CFLAGS += -g
-DEPS := $(patsubst src/cpp/%.cpp,out/%.d, $(wildcard src/cpp/*.cpp))
+DEPS = \
+	$(patsubst src/cpp/%.cpp,out/%.d, $(wildcard src/cpp/*.cpp)) \
+	$(patsubst out/antlr_src/%.cpp,out/antlr_out/%.d, $(wildcard out/antlr_src/*.cpp))
 
 all: out/$(TARGET)
 
 dev: out/$(TARGET)
-	./$<
+	cd example && ../$<	
 
 out:
 	mkdir -p $@
@@ -26,11 +38,23 @@ out:
 clean:
 	rm -rf out
 
-out/%.o: src/cpp/%.cpp | out
-	@#Use g++ to build o file and a dependecy tree .d file for every cpp file
-	ccache g++ $(INCLUDES) $(CFLAGS) -MMD -MP -MF $(patsubst %.o,%.d,$@) -MT $(patsubst %.d,%.o,$@) -c $< -o $@
+.PHONY: all dev clean
 
-out/antlr: src/antlr/repmake.g4
+out/%.o: src/cpp/%.cpp out/antlr_src | out
+	@#Use g++ to build o file and a dependecy tree .d file for every cpp file
+	ccache g++ $(INCLUDES_CPP) $(CFLAGS_CPP) -MMD -MP -MF $(patsubst %.o,%.d,$@) -MT $(patsubst %.d,%.o,$@) -c $< -o $@
+
+out/antlr_src/%.cpp: src/antlr/Repmake.g4 out/antlr_src
+	touch $@
+
+out/antlr_out:
+	mkdir -p $@
+
+out/antlr_out/%.o: out/antlr_src/%.cpp src/antlr/Repmake.g4 | out/antlr_out
+	ccache g++ $(INCLUDES_ANTLR) $(CFLAGS_ANTLR) -MMD -MP -MF $(patsubst %.o,%.d,$@) -MT $(patsubst %.d,%.o,$@) -c $< -o $@
+
+out/antlr_src: src/antlr/Repmake.g4
+	rm -rf $@
 	antlr4 -Xexact-output-dir -Dlanguage=Cpp $< -o $@
 
 out/antlr_runtime/Makefile:
@@ -42,7 +66,7 @@ out/antlr_runtime/runtime/libantlr4_cpp_runtime.a: out/antlr_runtime/Makefile
 
 -include $(DEPS)
 
-out/$(TARGET):  $(OBJECTS)
+out/$(TARGET): $(OBJECTS)
 	g++ -flto $(CFLAGS) $(OBJECTS) -o $@
 
 
@@ -52,8 +76,7 @@ vars:
 	@echo "$(BEFORE_VARS) $(AFTER_VARS)" | xargs -n1 | sort | uniq -u
 
 AFTER_VARS := $(.VARIABLES)
-ALL_VARS := $(shell echo "$(BEFORE_VARS) $(AFTER_VARS)" | xargs -n1 | sort | uniq -u | grep -v "^GUARD$$" | grep -v "^TEST_RULE$$" | grep -v "^CHECK$$" | grep -v "^BEFORE_VARS$$")
-ALL_VAR_DEPS = $(call GUARD,${ALL_VARS})
-.PRECIOUS: ${ALL_VAR_DEPS}
 
-# $(info Val: [${DEPS}])
+nothing:
+
+# $(info Val: [$(DEPS)])

@@ -1,4 +1,4 @@
-grammar repmake;
+grammar Repmake;
 
 assignment: symbol '=' value EOF;
 

@@ -1,27 +1,22 @@
 #include <iostream>
 
-#include "antlr4-runtime/antlr4-runtime.h"
-#include "antlr4-runtime/SceneLexer.h"
-#include "antlr4-runtime/SceneParser.h"
-#include "ImageVisitor.h"
+#include "antlr4-runtime.h"
+#include "RepmakeLexer.h"
+#include "RepmakeParser.h"
 
 using namespace std;
 using namespace antlr4;
 
 int main(int argc, const char* argv[]) {
     std::ifstream stream;
-    stream.open("input.scene");
+    stream.open("RepMake");
     
     ANTLRInputStream input(stream);
-    SceneLexer lexer(&input);
+    RepmakeLexer lexer(&input);
     CommonTokenStream tokens(&lexer);
-    SceneParser parser(&tokens);    
+    RepmakeParser parser(&tokens);    
 
-    SceneParser::FileContext* tree = parser.file();
-
-    ImageVisitor visitor;
-    Scene scene = std::any_cast<Scene>(visitor.visitFile(tree));
-    scene.draw();
+    RepmakeParser::AssignmentContext* tree = parser.assignment();
 
     return 0;
 }
