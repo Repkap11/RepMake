@@ -1,5 +1,8 @@
 target1: target2
 
 target2: target1, target3
+	task1 is cool
+	task2
 
 target3: target1, target2
+	task3

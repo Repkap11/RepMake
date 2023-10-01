@@ -4,12 +4,15 @@ repmake: (rep_make_rule | comment)+ EOF;
 
 comment: '#' ~'\n'* '\n'*;
 
-rep_make_rule: rule_name ':' dependency_list '\n'*;
+// Rules and dependicies
+rep_make_rule:
+	RULE_NAME ':' dependency_list '\n'+ ('\n' | TASK)*;
 
-dependency_list: rule_name ( ',' rule_name)*?;
-
-rule_name: SYMBOL;
-
+dependency_list: RULE_NAME ( ',' RULE_NAME)*?;
+RULE_NAME: SYMBOL;
 SYMBOL: [a-zA-Z0-9_]+;
 
-WHITESPACE: (' ' | '\t')+ -> skip;
+// Tasks
+TASK: '\t'+ (SYMBOL | ' ')+;
+
+WHITESPACE: (' ')+ -> skip;

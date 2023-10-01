@@ -5,8 +5,7 @@
 #include "antlr4-runtime.h"
 
 using namespace antlr4;
-
-#define SYMBOL_TEXT(context) context->SYMBOL()->getText()
+using namespace antlr4::tree;
 
 int main(int argc, const char* argv[]) {
     std::ifstream stream;
@@ -17,6 +16,7 @@ int main(int argc, const char* argv[]) {
     stream.open(inputFile);
 
     ANTLRInputStream input(stream);
+    input.name = inputFile;
     RepMakeLexer lexer(&input);
     CommonTokenStream tokens(&lexer);
     RepMakeParser parser(&tokens);
@@ -26,25 +26,24 @@ int main(int argc, const char* argv[]) {
         return 1;
     }
     std::set<std::string> all_rules;
-    std::vector<RepMakeParser::Rep_make_ruleContext*> rules = context->rep_make_rule();
+    auto rules = context->rep_make_rule();
     bool error_flag = false;
-    for (RepMakeParser::Rep_make_ruleContext* rule : rules) {
-        std::string rule_name = SYMBOL_TEXT(rule->rule_name());
+    for (auto rule : rules) {
+        std::string rule_name = rule->RULE_NAME()->getText();
         bool duplicate = !all_rules.insert(rule_name).second;
         if (duplicate) {
             std::cerr << "Error: Duplicate rule defined: \"" << rule_name << "\"" << std::endl;
             error_flag = true;
         }
     }
-    for (RepMakeParser::Rep_make_ruleContext* rule : rules) {
-        std::vector<RepMakeParser::Rule_nameContext*> dependency_rules = rule->dependency_list()->rule_name();
+    for (auto rule : rules) {
+        auto dependency_rules = rule->dependency_list()->RULE_NAME();
 
-        std::string rule_name = SYMBOL_TEXT(rule->rule_name());
-        for (RepMakeParser::Rule_nameContext* dependency : dependency_rules) {
-            std::string dep_name = SYMBOL_TEXT(dependency);
-            if (dep_name == rule_name){
-                                std::cerr << "Error: \"" << dep_name << "\" depends on itself." << std::endl;
-
+        std::string rule_name = rule->RULE_NAME()->getText();
+        for (auto dependency : dependency_rules) {
+            std::string dep_name = dependency->getText();
+            if (dep_name == rule_name) {
+                std::cerr << "Error: \"" << dep_name << "\" depends on itself." << std::endl;
             }
             auto pos = all_rules.find(dep_name);
             if (pos == all_rules.end()) {
@@ -55,6 +54,12 @@ int main(int argc, const char* argv[]) {
     }
     if (error_flag) {
         return -1;
+    }
+    for (auto rule : rules) {
+        auto tasks = rule->TASK();
+        for (auto task : tasks) {
+            std::cout << "Task:" << task->getText() << std::endl;
+        }
     }
     std::cout << "Success!" << std::endl;
     return 0;
