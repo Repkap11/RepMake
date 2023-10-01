@@ -9,11 +9,11 @@ MAKEFLAGS += --no-print-directory
 
 CFLAGS := -Wall -Wextra -std=c++11 -Wno-unused-parameter -Wno-unused-variable
 
-OBJECTS := $(patsubst src/%.cpp,out/%.o, $(wildcard src/*.cpp))
+OBJECTS := $(patsubst src/cpp/%.cpp,out/%.o, $(wildcard src/cpp/*.cpp))
 INCLUDES := -I include/
 # CFLAGS += -O3
 CFLAGS += -g
-DEPS := $(patsubst src/%.cpp,out/%.d, $(wildcard src/*.cpp))
+DEPS := $(patsubst src/cpp/%.cpp,out/%.d, $(wildcard src/cpp/*.cpp))
 
 all: out/$(TARGET)
 
@@ -26,9 +26,19 @@ out:
 clean:
 	rm -rf out
 
-out/%.o: src/%.cpp | out
+out/%.o: src/cpp/%.cpp | out
 	@#Use g++ to build o file and a dependecy tree .d file for every cpp file
-	g++ $(INCLUDES) $(CFLAGS) -MMD -MP -MF $(patsubst %.o,%.d,$@) -MT $(patsubst %.d,%.o,$@) -c $< -o $@
+	ccache g++ $(INCLUDES) $(CFLAGS) -MMD -MP -MF $(patsubst %.o,%.d,$@) -MT $(patsubst %.d,%.o,$@) -c $< -o $@
+
+out/antlr: src/antlr/repmake.g4
+	antlr4 -Xexact-output-dir -Dlanguage=Cpp $< -o $@
+
+out/antlr_runtime/Makefile:
+	mkdir -p out/antlr_runtime
+	cd out/antlr_runtime && cmake ../../libs/antlr4-cpp-runtime/
+	
+out/antlr_runtime/runtime/libantlr4_cpp_runtime.a: out/antlr_runtime/Makefile
+	$(MAKE) -C out/antlr_runtime
 
 -include $(DEPS)
 
@@ -46,4 +56,4 @@ ALL_VARS := $(shell echo "$(BEFORE_VARS) $(AFTER_VARS)" | xargs -n1 | sort | uni
 ALL_VAR_DEPS = $(call GUARD,${ALL_VARS})
 .PRECIOUS: ${ALL_VAR_DEPS}
 
-$(info Val: [${DEPS}])
+# $(info Val: [${DEPS}])
