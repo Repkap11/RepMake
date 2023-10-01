@@ -1,4 +1,4 @@
-target1:target2
+target0:target2
 
 target1:
     other
@@ -7,5 +7,8 @@ target2: target1, target3
     task is cool right
     task2
 
-target3: target1, target2
+target3: target5, target1, target2, target4;
     task3
+
+target5:
+target4:

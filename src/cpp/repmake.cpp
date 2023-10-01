@@ -19,7 +19,8 @@ int main(int argc, const char* argv[]) {
     ANTLRInputStream input(stream);
     input.name = inputFile;
     RepMakeLexer lexer(&input);
-    if (true) {
+    if (false) {
+        // Print out the tokens.
         auto vocab = lexer.getVocabulary();
         std::vector<std::unique_ptr<Token>> tokens = lexer.getAllTokens();
         for (std::unique_ptr<Token>& token : tokens) {
@@ -48,31 +49,65 @@ int main(int argc, const char* argv[]) {
 
     std::vector<RepMakeParser::Rep_make_ruleContext*> rules = context->rep_make_rule();
     bool error_flag = false;
-    for (RepMakeParser::Rep_make_ruleContext* rule : rules) {
-        std::string rule_name = rule->rule_name()->IDENTIFIER()->getText();
-        std::vector<RepMakeParser::Rule_nameContext*> deps = rule->dependency_list()->rule_name();
-        RepMakeParser::TasksContext* tasks = rule->tasks();
-    }
+    // Add the data into our structure.
 
-    for (auto rule : rules) {
-        auto dependency_rules = rule->dependency_list()->rule_name();
-
+    for (RepMakeParser::Rep_make_ruleContext* const rule : rules) {
         std::string rule_name = rule->rule_name()->IDENTIFIER()->getText();
-        for (auto dependency : dependency_rules) {
-            std::string dep_name = dependency->IDENTIFIER()->getText();
-            if (dep_name == rule_name) {
-                std::cerr << "Error: \"" << dep_name << "\" depends on itself." << std::endl;
-            }
-            auto pos = all_rules_map.find(dep_name);
-            if (pos == all_rules_map.end()) {
-                std::cerr << "Error: Dependency \"" << dep_name << "\" not defined in rule \"" << rule_name << "\"" << std::endl;
-                error_flag = true;
+        auto deps_list = rule->dependency_list();
+
+        std::unordered_set<std::string> deps_set;
+        if (deps_list != NULL) {
+            std::vector<RepMakeParser::Rule_nameContext*> deps = deps_list->rule_name();
+            for (RepMakeParser::Rule_nameContext* dep : deps) {
+                deps_set.insert(dep->IDENTIFIER()->getText());
             }
         }
+
+        std::vector<std::string> tasks_vector;
+        RepMakeParser::TasksContext* tasks = rule->tasks();
+        if (tasks != NULL) {
+            for (RepMakeParser::TaskContext* task : tasks->task()) {
+                tasks_vector.emplace_back(task->getText());
+            }
+        }
+
+        bool duplicate = !all_rules_map.insert({rule_name, {rule_name, std::move(deps_set), std::move(tasks_vector)}}).second;
+        if (duplicate) {
+            std::cerr << "Error: Duplicate rule defined: \"" << rule_name << "\"" << std::endl;
+            error_flag = true;
+        }
     }
-    if (error_flag) {
-        return -1;
-    }
+
+    // for (auto rule : rules) {
+    //     auto dependency_rules = rule->dependency_list()->rule_name();
+
+    //     std::string rule_name = rule->rule_name()->IDENTIFIER()->getText();
+    //     for (auto dependency : dependency_rules) {
+    //         std::string dep_name = dependency->IDENTIFIER()->getText();
+    //         if (dep_name == rule_name) {
+    //             std::cerr << "Error: \"" << dep_name << "\" depends on itself." << std::endl;
+    //         }
+    //         auto pos = all_rules_map.find(dep_name);
+    //         if (pos == all_rules_map.end()) {
+    //             std::cerr << "Error: Dependency \"" << dep_name << "\" not defined in rule \"" << rule_name << "\"" << std::endl;
+    //             error_flag = true;
+    //         }
+    //     }
+    // }
+
+    // for (auto rule : rules) {
+    //     std::string rule_name = rule->rule_name()->IDENTIFIER()->getText();
+
+    //     all_rules_map.insert(rule, {rule, deps_str, tasks});
+    //     auto dependency_list = rule->dependency_list();
+    //     if (dependency_list == NULL) {
+    //         continue;
+    //     }
+    //     auto dependency_rules = dependency_list->rule_name();
+    // }
+    // if (error_flag) {
+    //     return -1;
+    // }
     // for (auto rule : rules) {
     //     RepMakeParser::TasksContext* tasks = rule->tasks();
     //     if (tasks == NULL) {
@@ -83,14 +118,40 @@ int main(int argc, const char* argv[]) {
     //     }
     // }
 
-    for (auto element : all_rules_map) {
-        // std::string rule_name = element.first;
-        Rule rule = std::move(element.second);
+    for (auto& element : all_rules_map) {
+        std::string rule_name = element.first;
+        Rule& rule = element.second;
         std::unordered_set<Rule*>& deps = rule.deps;
         for (std::string dep_str : rule.deps_str) {
-            deps.emplace(&all_rules_map.find(dep_str)->second);
+            if (dep_str == rule_name) {
+                std::cerr << "Error: \"" << dep_str << "\" depends on itself." << std::endl;
+            }
+            auto pos = all_rules_map.find(dep_str);
+            if (pos == all_rules_map.end()) {
+                std::cerr << "Error: Dependency \"" << dep_str << "\" not defined in rule \"" << rule_name << "\"" << std::endl;
+                error_flag = true;
+            }
+            Rule* dep = &all_rules_map.find(dep_str)->second;
+            deps.emplace(std::move(dep));
         }
     }
+    if (error_flag) {
+        return -1;
+    }
+
+    for (const auto& element : all_rules_map) {
+        std::string rule_name = element.first;
+        const Rule& rule = element.second;
+        std::cout << rule_name << ": ";
+        for (const Rule* const deps : rule.deps) {
+            std::cout << " " << deps->name;
+        }
+        std::cout << std::endl;
+        for (const std::string& tasks : rule.tasks) {
+            std::cout << "            " << tasks << std::endl;
+        }
+    }
+
     std::cout << "Success!" << std::endl;
     return 0;
 }

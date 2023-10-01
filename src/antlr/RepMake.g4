@@ -10,7 +10,7 @@ IDENTIFIER: [a-zA-Z0-9_]+;
 // Parse
 repmake: (rep_make_rule)+ EOF;
 
-rep_make_rule: rule_name ':' dependency_list NEW_LINE? tasks? NEW_LINE?;
+rep_make_rule: rule_name ':' dependency_list? NEW_LINE? tasks? NEW_LINE?;
 
 dependency_list: rule_name ( ',' rule_name)*?;
 
