@@ -19,7 +19,13 @@ int main(int argc, const char* argv[]) {
     ANTLRInputStream input(stream);
     input.name = inputFile;
     RepMakeLexer lexer(&input);
-    if (false) {
+
+    CommonTokenStream tokens(&lexer);
+    RepMakeParser parser(&tokens);
+    RepMakeParser::RepmakeContext* context = parser.repmake();
+
+    if (parser.getNumberOfSyntaxErrors() != 0) {
+        lexer.reset();
         // Print out the tokens.
         auto vocab = lexer.getVocabulary();
         std::vector<std::unique_ptr<Token>> tokens = lexer.getAllTokens();
@@ -35,13 +41,6 @@ int main(int argc, const char* argv[]) {
             }
         }
         lexer.reset();
-    }
-
-    CommonTokenStream tokens(&lexer);
-    RepMakeParser parser(&tokens);
-    RepMakeParser::RepmakeContext* context = parser.repmake();
-
-    if (parser.getNumberOfSyntaxErrors() != 0) {
         return 1;
     }
     // std::unordered_map<std::string, std::pair<std::unordered_set<std::string>, std::vector<std::string>>> all_rules_str;
@@ -78,50 +77,10 @@ int main(int argc, const char* argv[]) {
         }
     }
 
-    // for (auto rule : rules) {
-    //     auto dependency_rules = rule->dependency_list()->rule_name();
-
-    //     std::string rule_name = rule->rule_name()->IDENTIFIER()->getText();
-    //     for (auto dependency : dependency_rules) {
-    //         std::string dep_name = dependency->IDENTIFIER()->getText();
-    //         if (dep_name == rule_name) {
-    //             std::cerr << "Error: \"" << dep_name << "\" depends on itself." << std::endl;
-    //         }
-    //         auto pos = all_rules_map.find(dep_name);
-    //         if (pos == all_rules_map.end()) {
-    //             std::cerr << "Error: Dependency \"" << dep_name << "\" not defined in rule \"" << rule_name << "\"" << std::endl;
-    //             error_flag = true;
-    //         }
-    //     }
-    // }
-
-    // for (auto rule : rules) {
-    //     std::string rule_name = rule->rule_name()->IDENTIFIER()->getText();
-
-    //     all_rules_map.insert(rule, {rule, deps_str, tasks});
-    //     auto dependency_list = rule->dependency_list();
-    //     if (dependency_list == NULL) {
-    //         continue;
-    //     }
-    //     auto dependency_rules = dependency_list->rule_name();
-    // }
-    // if (error_flag) {
-    //     return -1;
-    // }
-    // for (auto rule : rules) {
-    //     RepMakeParser::TasksContext* tasks = rule->tasks();
-    //     if (tasks == NULL) {
-    //         continue;
-    //     }
-    //     for (RepMakeParser::TaskContext* task : tasks->task()) {
-    //         std::cout << "Task:" << task->getText() << std::endl;
-    //     }
-    // }
-
     for (auto& element : all_rules_map) {
         std::string rule_name = element.first;
         Rule& rule = element.second;
-        std::unordered_set<Rule*>& deps = rule.deps;
+        std::unordered_set<Rule*>& triggers = rule.triggers;
         for (std::string dep_str : rule.deps_str) {
             if (dep_str == rule_name) {
                 std::cerr << "Error: \"" << dep_str << "\" depends on itself." << std::endl;
@@ -132,26 +91,29 @@ int main(int argc, const char* argv[]) {
                 error_flag = true;
             }
             Rule* dep = &all_rules_map.find(dep_str)->second;
-            deps.emplace(std::move(dep));
+            dep->triggers.emplace(&rule);
         }
     }
     if (error_flag) {
         return -1;
     }
 
-    for (const auto& element : all_rules_map) {
-        std::string rule_name = element.first;
-        const Rule& rule = element.second;
-        std::cout << rule_name << ": ";
-        for (const Rule* const deps : rule.deps) {
-            std::cout << " " << deps->name;
-        }
-        std::cout << std::endl;
-        for (const std::string& tasks : rule.tasks) {
-            std::cout << "            " << tasks << std::endl;
+    if (false) {
+        for (const auto& element : all_rules_map) {
+            std::string rule_name = element.first;
+            const Rule& rule = element.second;
+            std::cout << rule_name << ": ";
+            for (const Rule* const triggers : rule.triggers) {
+                std::cout << " " << triggers->name;
+            }
+            std::cout << std::endl;
+            // for (const std::string& tasks : rule.tasks) {
+            //     std::cout << "            " << tasks << std::endl;
+            // }
         }
     }
+    Rule::runTasksInOrder(all_rules_map);
 
-    std::cout << "Success!" << std::endl;
+    // std::cout << "Success!" << std::endl;
     return 0;
 }

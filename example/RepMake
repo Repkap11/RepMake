@@ -1,14 +1,10 @@
 target0:target2
 
 target1:
-    other
+    task1
 
-target2: target1, target3
-    task is cool right
-    task2
-
-target3: target5, target1, target2, target4;
+target2: target1
+    task2 part 1
+    task2 part 2
+target3: target0, target1, target2
     task3
-
-target5:
-target4:
