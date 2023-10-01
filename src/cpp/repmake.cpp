@@ -3,6 +3,7 @@
 #include "RepMakeLexer.h"
 #include "RepMakeParser.h"
 #include "antlr4-runtime.h"
+#include "rules.hpp"
 
 using namespace antlr4;
 using namespace antlr4::tree;
@@ -42,17 +43,17 @@ int main(int argc, const char* argv[]) {
     if (parser.getNumberOfSyntaxErrors() != 0) {
         return 1;
     }
-    std::set<std::string> all_rules;
-    auto rules = context->rep_make_rule();
+    // std::unordered_map<std::string, std::pair<std::unordered_set<std::string>, std::vector<std::string>>> all_rules_str;
+    std::unordered_map<std::string, Rule> all_rules_map;
+
+    std::vector<RepMakeParser::Rep_make_ruleContext*> rules = context->rep_make_rule();
     bool error_flag = false;
-    for (auto rule : rules) {
+    for (RepMakeParser::Rep_make_ruleContext* rule : rules) {
         std::string rule_name = rule->rule_name()->IDENTIFIER()->getText();
-        bool duplicate = !all_rules.insert(rule_name).second;
-        if (duplicate) {
-            std::cerr << "Error: Duplicate rule defined: \"" << rule_name << "\"" << std::endl;
-            error_flag = true;
-        }
+        std::vector<RepMakeParser::Rule_nameContext*> deps = rule->dependency_list()->rule_name();
+        RepMakeParser::TasksContext* tasks = rule->tasks();
     }
+
     for (auto rule : rules) {
         auto dependency_rules = rule->dependency_list()->rule_name();
 
@@ -62,8 +63,8 @@ int main(int argc, const char* argv[]) {
             if (dep_name == rule_name) {
                 std::cerr << "Error: \"" << dep_name << "\" depends on itself." << std::endl;
             }
-            auto pos = all_rules.find(dep_name);
-            if (pos == all_rules.end()) {
+            auto pos = all_rules_map.find(dep_name);
+            if (pos == all_rules_map.end()) {
                 std::cerr << "Error: Dependency \"" << dep_name << "\" not defined in rule \"" << rule_name << "\"" << std::endl;
                 error_flag = true;
             }
@@ -72,13 +73,22 @@ int main(int argc, const char* argv[]) {
     if (error_flag) {
         return -1;
     }
-    for (auto rule : rules) {
-        auto tasks = rule->tasks();
-        if (tasks == NULL) {
-            continue;
-        }
-        for (RepMakeParser::TaskContext* task : tasks->task()) {
-            std::cout << "Task:" << task->getText() << std::endl;
+    // for (auto rule : rules) {
+    //     RepMakeParser::TasksContext* tasks = rule->tasks();
+    //     if (tasks == NULL) {
+    //         continue;
+    //     }
+    //     for (RepMakeParser::TaskContext* task : tasks->task()) {
+    //         std::cout << "Task:" << task->getText() << std::endl;
+    //     }
+    // }
+
+    for (auto element : all_rules_map) {
+        // std::string rule_name = element.first;
+        Rule rule = std::move(element.second);
+        std::unordered_set<Rule*>& deps = rule.deps;
+        for (std::string dep_str : rule.deps_str) {
+            deps.emplace(&all_rules_map.find(dep_str)->second);
         }
     }
     std::cout << "Success!" << std::endl;
