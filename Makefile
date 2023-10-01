@@ -71,7 +71,7 @@ out/antlr_runtime/runtime/libantlr4_cpp_runtime.a: out/antlr_runtime/Makefile
 -include $(DEPS)
 
 out/$(TARGET): $(OBJECTS)
-	g++ -flto $(CFLAGS) $(OBJECTS) -o $@
+	g++ -flto $(CFLAGS_CPP) $(OBJECTS) -o $@
 
 
 .PRECIOUS: out/$(TARGET) $(OBJECTS)

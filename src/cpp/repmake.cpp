@@ -6,6 +6,8 @@
 
 using namespace antlr4;
 
+#define SYMBOL_TEXT(context) context->SYMBOL()->getText()
+
 int main(int argc, const char* argv[]) {
     std::ifstream stream;
     if (argc != 2) {
@@ -18,33 +20,42 @@ int main(int argc, const char* argv[]) {
     RepMakeLexer lexer(&input);
     CommonTokenStream tokens(&lexer);
     RepMakeParser parser(&tokens);
-    parser.setErrorHandler(std::shared_ptr<BailErrorStrategy>(new BailErrorStrategy()));
-    RepMakeParser::RepmakeContext* context;
-    try {
-        context = parser.repmake();
-    } catch (ParseCancellationException* e) {
-        std::cerr << "Error parseing: " << inputFile << std::endl;
-        exit(1);
+    RepMakeParser::RepmakeContext* context = parser.repmake();
+
+    if (parser.getNumberOfSyntaxErrors() != 0) {
+        return 1;
     }
+    std::set<std::string> all_rules;
     std::vector<RepMakeParser::Rep_make_ruleContext*> rules = context->rep_make_rule();
+    bool error_flag = false;
     for (RepMakeParser::Rep_make_ruleContext* rule : rules) {
-        std::string rule_name = rule->rule_name()->SYMBOL()->getText();
-        std::cout << "Name:" << rule_name << std::endl;
+        std::string rule_name = SYMBOL_TEXT(rule->rule_name());
+        bool duplicate = !all_rules.insert(rule_name).second;
+        if (duplicate) {
+            std::cerr << "Error: Duplicate rule defined: \"" << rule_name << "\"" << std::endl;
+            error_flag = true;
+        }
     }
+    for (RepMakeParser::Rep_make_ruleContext* rule : rules) {
+        std::vector<RepMakeParser::Rule_nameContext*> dependency_rules = rule->dependency_list()->rule_name();
 
-    // std::vector<Rep_make_ruleContext*> rep_make_rules;
+        std::string rule_name = SYMBOL_TEXT(rule->rule_name());
+        for (RepMakeParser::Rule_nameContext* dependency : dependency_rules) {
+            std::string dep_name = SYMBOL_TEXT(dependency);
+            if (dep_name == rule_name){
+                                std::cerr << "Error: \"" << dep_name << "\" depends on itself." << std::endl;
 
-    // tree::TerminalNode* symb = assignment->SYMBOL();
-    // std::string symbol_str = symb->getSymbol()->getText();
-    // tree::TerminalNode* value_str = assignment->value()->STRING();
-    // tree::TerminalNode* value_symb = assignment->value()->SYMBOL();
-    // if (value_str != NULL) {
-    //     std::cout << symbol_str << " str " << value_str->getSymbol()->getText() << std::endl;
-    // } else if (value_symb != NULL) {
-    //     std::cout << symbol_str << " symb " << value_symb->getSymbol()->getText() << std::endl;
-    // }
-    // string value_str = assignment->value()->STRING()->getSymbol()->getText();
-    // std::cout << symbol_str << " value_str: " << value_str << " value_symb: " << value_symb << std::endl;
-
+            }
+            auto pos = all_rules.find(dep_name);
+            if (pos == all_rules.end()) {
+                std::cerr << "Error: Dependency \"" << dep_name << "\" not defined in rule \"" << rule_name << "\"" << std::endl;
+                error_flag = true;
+            }
+        }
+    }
+    if (error_flag) {
+        return -1;
+    }
+    std::cout << "Success!" << std::endl;
     return 0;
 }

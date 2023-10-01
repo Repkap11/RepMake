@@ -1,13 +1,15 @@
 grammar RepMake;
 
-repmake: (rep_make_rule)+ EOF;
+repmake: (rep_make_rule | comment)+ EOF;
 
-rep_make_rule: rule_name ':' dependency_list ';';
+comment: '#' ~'\n'* '\n'*;
 
-dependency_list: rule_name ( ',' rule_name )*? ;
+rep_make_rule: rule_name ':' dependency_list '\n'*;
+
+dependency_list: rule_name ( ',' rule_name)*?;
 
 rule_name: SYMBOL;
 
 SYMBOL: [a-zA-Z0-9_]+;
 
-WHITESPACE: ' ' -> skip;
+WHITESPACE: (' ' | '\t')+ -> skip;
