@@ -1,1 +1,3 @@
-target=repmake
+target1: depend1, depend2;
+
+target2: depend2, depend3;

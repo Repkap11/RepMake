@@ -3,13 +3,13 @@
         {
             "name": "Linux",
             "includePath": [
-                "${workspaceFolder}/include/**", "${workspaceFolder}/libs/antlr4-cpp-runtime/runtime/src", "${workspaceFolder}/out/antlr"
+                "${workspaceFolder}/include/**", "${workspaceFolder}/libs/antlr4-cpp-runtime/runtime/src", "${workspaceFolder}/out/antlr_src"
             ],
             "defines": [],
-            "compilerPath": "/usr/bin/clang",
+            "compilerPath": "/usr/bin/g++",
             "cStandard": "c17",
             "cppStandard": "c++14",
-            "intelliSenseMode": "linux-clang-x64"
+            "intelliSenseMode": "linux-gcc-x64"
         }
     ],
     "version": 4

@@ -14,6 +14,11 @@ MAKEFLAGS += --no-builtin-rules
 CFLAGS_ANTLR = -std=c++11 -Wno-attributes
 CFLAGS_CPP = -Wall -Wextra -std=c++11 -Wno-unused-parameter -Wno-unused-variable -Wno-attributes
 
+# CFLAGS += -O3
+# CFLAGS_ANTLR += -g
+CFLAGS_CPP += -g
+
+
 OBJECTS = \
 	$(patsubst src/cpp/%.cpp,out/%.o, $(wildcard src/cpp/*.cpp)) \
 	$(patsubst out/antlr_src/%.cpp,out/antlr_out/%.o, $(wildcard out/antlr_src/*.cpp)) \
@@ -21,8 +26,7 @@ OBJECTS = \
 
 INCLUDES_ANTLR = -I libs/antlr4-cpp-runtime/runtime/src/
 INCLUDES_CPP = $(INCLUDES_ANTLR) -I include/  -I out/antlr_src
-# CFLAGS += -O3
-CFLAGS += -g
+
 DEPS = \
 	$(patsubst src/cpp/%.cpp,out/%.d, $(wildcard src/cpp/*.cpp)) \
 	$(patsubst out/antlr_src/%.cpp,out/antlr_out/%.d, $(wildcard out/antlr_src/*.cpp))
@@ -30,7 +34,7 @@ DEPS = \
 all: out/$(TARGET)
 
 dev: out/$(TARGET)
-	cd example && ../$<	
+	./$< example/RepMake
 
 out:
 	mkdir -p $@
@@ -44,16 +48,16 @@ out/%.o: src/cpp/%.cpp out/antlr_src | out
 	@#Use g++ to build o file and a dependecy tree .d file for every cpp file
 	ccache g++ $(INCLUDES_CPP) $(CFLAGS_CPP) -MMD -MP -MF $(patsubst %.o,%.d,$@) -MT $(patsubst %.d,%.o,$@) -c $< -o $@
 
-out/antlr_src/%.cpp: src/antlr/Repmake.g4 out/antlr_src
+out/antlr_src/%.cpp: src/antlr/RepMake.g4 out/antlr_src
 	touch $@
 
 out/antlr_out:
 	mkdir -p $@
 
-out/antlr_out/%.o: out/antlr_src/%.cpp src/antlr/Repmake.g4 | out/antlr_out
+out/antlr_out/%.o: out/antlr_src/%.cpp src/antlr/RepMake.g4 | out/antlr_out
 	ccache g++ $(INCLUDES_ANTLR) $(CFLAGS_ANTLR) -MMD -MP -MF $(patsubst %.o,%.d,$@) -MT $(patsubst %.d,%.o,$@) -c $< -o $@
 
-out/antlr_src: src/antlr/Repmake.g4
+out/antlr_src: src/antlr/RepMake.g4
 	rm -rf $@
 	antlr4 -Xexact-output-dir -Dlanguage=Cpp $< -o $@
 
