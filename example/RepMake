@@ -1,8 +1,8 @@
-target0:
-    echo good0
-
 target1: target0
     echo good1
 
-target2: target0
+target0:
+    echo good0
+
+target2:
     echo bad2

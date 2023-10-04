@@ -21,10 +21,12 @@ class Rule {
         }
     };
     bool hasBeenRun = false;
+    bool hasBeenAddedToTasks = false;
     std::string name;
     std::unordered_set<std::string> deps_str;
     size_t num_triggs_left;
     std::unordered_set<Rule*> triggers;
+    std::unordered_set<Rule*> deps;
     std::vector<std::string> tasks;
-    static void runTasksInOrder(std::unordered_set<std::string>& tasks, std::unordered_map<std::string, Rule>& rules);
+    static void runTasksInOrder(std::unordered_set<std::string>& targets_to_run, std::unordered_map<std::string, Rule>& rules);
 };

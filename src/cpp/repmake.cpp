@@ -13,9 +13,9 @@ int main(int argc, const char* argv[]) {
         std::cerr << "Usage:" << argv[0] << "[RepMake file name]" << std::endl;
         return 1;
     }
-    std::unordered_set<std::string> targets;
+    std::unordered_set<std::string> targets_to_run;
     for (int i = 2; i < argc; i++) {
-        targets.insert(std::string(argv[i]));
+        targets_to_run.insert(std::string(argv[i]));
     }
 
     const char* inputFile = argv[1];
@@ -76,8 +76,8 @@ int main(int argc, const char* argv[]) {
 
     for (RepMakeParser::Rep_make_ruleContext* const rule : rules) {
         std::string rule_name = rule->rule_name()->IDENTIFIER()->getText();
-        if (targets.empty()){
-            targets.insert(rule_name);
+        if (targets_to_run.empty()){
+            targets_to_run.insert(rule_name);
         }
         auto deps_list = rule->dependency_list();
 
@@ -118,6 +118,7 @@ int main(int argc, const char* argv[]) {
                 error_flag = true;
             }
             Rule* dep = &all_rules_map.find(dep_str)->second;
+            rule.deps.insert(dep);
             dep->triggers.emplace(&rule);
         }
     }
@@ -139,7 +140,7 @@ int main(int argc, const char* argv[]) {
             // }
         }
     }
-    Rule::runTasksInOrder(targets, all_rules_map);
+    Rule::runTasksInOrder(targets_to_run, all_rules_map);
 
     // std::cout << "Success!" << std::endl;
     return 0;
