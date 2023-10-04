@@ -1,8 +1,5 @@
-target1: target0
-    echo good1
+all: example
+    ./example
 
-target0:
-    echo good0
-
-target2:
-    echo bad2
+example:
+    gcc -o example example.c
