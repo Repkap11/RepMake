@@ -13,9 +13,24 @@ void Rule::runTasksInOrder(std::unordered_set<std::string>& targets_to_run, std:
         Rule* rule = &it->second;
         auto pos = targets_to_run.find(rule->name);
         if (pos != targets_to_run.end()) {
+            targets_to_run.erase(pos);
             rule->hasBeenAddedToTasks = true;
             tasksToRun.push(rule);
         }
+    }
+    if (!targets_to_run.empty()) {
+        std::cout << "No targets found: [";
+        for (std::string target : targets_to_run) {
+            std::cout << " " << target;
+        }
+        std::cout << " ]" << std::endl;
+
+        std::cout << "Known rules are: [";
+        for (auto rule : rules) {
+            std::cout << " " << rule.first;
+        }
+        std::cout << " ]" << std::endl;
+        return;
     }
 
     while (!tasksToRun.empty()) {

@@ -34,7 +34,7 @@ DEPS = \
 all: out/$(TARGET)
 
 dev: out/$(TARGET)
-	@cd example && ../$< RepMake
+	@cd example && ../$<
 
 out:
 	mkdir -p $@
