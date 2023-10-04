@@ -30,7 +30,7 @@ int main(int argc, const char* argv[]) {
     RepMakeLexer lexer(&input);
     auto vocab = lexer.getVocabulary();
 
-    if (true) {
+    if (false) {
         lexer.reset();
         // Print out the tokens.
         std::vector<std::unique_ptr<Token>> tokens = lexer.getAllTokens();

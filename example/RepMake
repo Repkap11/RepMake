@@ -1,5 +1,6 @@
-target0:target1
-    taskA
-    taskB
-target1:
-target2:
+target0:
+    ls
+    echo test
+
+target1: target0
+    echo llama

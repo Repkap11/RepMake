@@ -1,4 +1,5 @@
 #include "rules.hpp"
+#include "tasks.hpp"
 
 #include <iostream>
 #include <queue>
@@ -15,13 +16,12 @@ void Rule::runTasksInOrder(std::unordered_map<std::string, Rule>& rules) {
             queue.push(rule);
         }
     }
-
     do {
         const Rule* rule = queue.front();
         queue.pop();
-        std::cout << "Running: " << rule->name << std::endl;
+        // std::cout << "Running: " << rule->name << std::endl;
         for (std::string task : rule->tasks) {
-            std::cout << " " << task << std::endl;
+            Task::run(task);
         }
         // for (const auto& it : rules) {}
 
