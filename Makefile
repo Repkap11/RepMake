@@ -59,7 +59,7 @@ out/antlr_out/%.o: out/antlr_src/%.cpp src/antlr/RepMake.g4 | out/antlr_out
 
 out/antlr_src: src/antlr/RepMake.g4
 	rm -rf $@
-	antlr4 -Xexact-output-dir -Dlanguage=Cpp $< -o $@
+	antlr4 -no-listener -message-format gnu -Xexact-output-dir -Dlanguage=Cpp $< -o $@
 
 out/antlr_runtime/Makefile:
 	mkdir -p out/antlr_runtime

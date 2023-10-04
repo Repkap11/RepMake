@@ -1,10 +1,15 @@
 grammar RepMake;
 
 // Lex
-COMMENT: '#' .*? (NEW_LINE | EOF) -> channel(HIDDEN);
+
+BLOCK_COMMENET: '/*' .*? '*/' -> channel(HIDDEN);
+LINE_COMMENT: '//' ~[\r\n]* -> channel(HIDDEN);
+// HWS: [ \t]* -> channel(HIDDEN);
+
+COMMENT: '#' ~( '\r' | '\n')* -> channel(HIDDEN);
 IDENT: NEW_LINE (SPACES | '\t'+);
 SPACES: ' '+;
-NEW_LINE: '\n'+;
+NEW_LINE: [\r\n\f]+;
 IDENTIFIER: [a-zA-Z0-9_]+;
 
 // Parse
@@ -18,4 +23,4 @@ dependency_list: rule_name ( ',' rule_name)*?;
 tasks: (IDENT task)+;
 
 task: (IDENTIFIER | SPACES)+;
-rule_name: SPACES? IDENTIFIER SPACES?;
+rule_name: IDENTIFIER SPACES?;

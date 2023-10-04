@@ -1,10 +1,6 @@
-target0:target2
+target0:target1
+    task0
 
-target1:
+#comment2
+target1:   #Comment
     task1
-
-target2: target1
-    task2 part 1
-    task2 part 2
-target3: target0, target1, target2
-    task3

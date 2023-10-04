@@ -20,19 +20,15 @@ int main(int argc, const char* argv[]) {
     input.name = inputFile;
     RepMakeLexer lexer(&input);
 
-    CommonTokenStream tokens(&lexer);
-    RepMakeParser parser(&tokens);
-    RepMakeParser::RepmakeContext* context = parser.repmake();
-
-    if (parser.getNumberOfSyntaxErrors() != 0) {
+    if (true) {
         lexer.reset();
         // Print out the tokens.
         auto vocab = lexer.getVocabulary();
         std::vector<std::unique_ptr<Token>> tokens = lexer.getAllTokens();
         for (std::unique_ptr<Token>& token : tokens) {
-            if (token->getChannel() != Token::DEFAULT_CHANNEL) {
-                continue;
-            }
+            // if (token->getChannel() != Token::DEFAULT_CHANNEL) {
+            //     continue;
+            // }
             // std::cout << token->getChannel();
             if (token->getType() == RepMakeLexer::NEW_LINE) {
                 std::cout << " NEW_LINE" << std::endl;
@@ -41,6 +37,13 @@ int main(int argc, const char* argv[]) {
             }
         }
         lexer.reset();
+    }
+
+    CommonTokenStream tokens(&lexer);
+    RepMakeParser parser(&tokens);
+    RepMakeParser::RepmakeContext* context = parser.repmake();
+
+    if (parser.getNumberOfSyntaxErrors() != 0) {
         return 1;
     }
     // std::unordered_map<std::string, std::pair<std::unordered_set<std::string>, std::vector<std::string>>> all_rules_str;
