@@ -1,6 +1,8 @@
 target0:
-    ls
-    echo test
+    echo good0
 
 target1: target0
-    echo llama
+    echo good1
+
+target2: target0
+    echo bad2

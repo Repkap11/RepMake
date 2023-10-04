@@ -9,9 +9,15 @@ using namespace antlr4;
 using namespace antlr4::tree;
 
 int main(int argc, const char* argv[]) {
-    if (argc != 2) {
+    if (argc < 2) {
         std::cerr << "Usage:" << argv[0] << "[RepMake file name]" << std::endl;
+        return 1;
     }
+    std::unordered_set<std::string> targets;
+    for (int i = 2; i < argc; i++) {
+        targets.insert(std::string(argv[i]));
+    }
+
     const char* inputFile = argv[1];
 
     std::ifstream stream;
@@ -70,6 +76,9 @@ int main(int argc, const char* argv[]) {
 
     for (RepMakeParser::Rep_make_ruleContext* const rule : rules) {
         std::string rule_name = rule->rule_name()->IDENTIFIER()->getText();
+        if (targets.empty()){
+            targets.insert(rule_name);
+        }
         auto deps_list = rule->dependency_list();
 
         std::unordered_set<std::string> deps_set;
@@ -130,7 +139,7 @@ int main(int argc, const char* argv[]) {
             // }
         }
     }
-    Rule::runTasksInOrder(all_rules_map);
+    Rule::runTasksInOrder(targets, all_rules_map);
 
     // std::cout << "Success!" << std::endl;
     return 0;

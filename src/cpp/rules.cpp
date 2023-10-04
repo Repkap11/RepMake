@@ -1,10 +1,11 @@
 #include "rules.hpp"
-#include "tasks.hpp"
 
 #include <iostream>
 #include <queue>
 
-void Rule::runTasksInOrder(std::unordered_map<std::string, Rule>& rules) {
+#include "tasks.hpp"
+
+void Rule::runTasksInOrder(std::unordered_set<std::string>& tasks, std::unordered_map<std::string, Rule>& rules) {
     bool did_any_work;
 
     std::queue<const Rule*> queue;
