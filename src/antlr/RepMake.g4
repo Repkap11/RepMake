@@ -2,21 +2,22 @@ grammar RepMake;
 
 // Lex
 
-BLOCK_COMMENET: '/*' .*? '*/' -> channel(HIDDEN);
+BLOCK_COMMENT: '/*' .*? '*/' -> channel(HIDDEN);
 LINE_COMMENT: '//' ~[\r\n]* -> channel(HIDDEN);
 // HWS: [ \t]* -> channel(HIDDEN);
 
+
 COMMENT: '#' ~( '\r' | '\n')* -> channel(HIDDEN);
 IDENT: NEW_LINE (SPACES | '\t'+);
-SPACES: ' '+;
-NEW_LINE: [\r\n\f]+;
+SPACES: ' '+ -> channel(HIDDEN);
+NEW_LINE: [\r\n\f];
 IDENTIFIER: [a-zA-Z0-9_]+;
 
 // Parse
-repmake: (rep_make_rule)* (IDENT)* EOF;
+repmake: (rep_make_rule | IDENT | NEW_LINE | SPACES)* EOF;
 
 rep_make_rule:
-	rule_name ':' dependency_list? NEW_LINE? tasks? NEW_LINE?;
+	NEW_LINE rule_name ':' dependency_list? IDENT? tasks? NEW_LINE?;
 
 dependency_list: rule_name ( ',' rule_name)*?;
 

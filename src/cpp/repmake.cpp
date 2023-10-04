@@ -9,26 +9,35 @@ using namespace antlr4;
 using namespace antlr4::tree;
 
 int main(int argc, const char* argv[]) {
-    std::ifstream stream;
     if (argc != 2) {
         std::cerr << "Usage:" << argv[0] << "[RepMake file name]" << std::endl;
     }
     const char* inputFile = argv[1];
-    stream.open(inputFile);
 
-    ANTLRInputStream input(stream);
+    std::ifstream stream;
+    stream.open(inputFile);
+    stream.seekg(0, std::ios::end);
+    std::streampos fileSize = stream.tellg();
+    fileSize += 1;
+    stream.seekg(0, std::ios::beg);
+
+    char* buffer = new char[fileSize];
+    buffer[0] = '\n';
+    stream.read(&buffer[1], fileSize);
+
+    ANTLRInputStream input(buffer, fileSize);
     input.name = inputFile;
     RepMakeLexer lexer(&input);
+    auto vocab = lexer.getVocabulary();
 
     if (true) {
         lexer.reset();
         // Print out the tokens.
-        auto vocab = lexer.getVocabulary();
         std::vector<std::unique_ptr<Token>> tokens = lexer.getAllTokens();
         for (std::unique_ptr<Token>& token : tokens) {
-            // if (token->getChannel() != Token::DEFAULT_CHANNEL) {
-            //     continue;
-            // }
+            if (token->getChannel() != Token::DEFAULT_CHANNEL) {
+                continue;
+            }
             // std::cout << token->getChannel();
             if (token->getType() == RepMakeLexer::NEW_LINE) {
                 std::cout << " NEW_LINE" << std::endl;
@@ -40,6 +49,12 @@ int main(int argc, const char* argv[]) {
     }
 
     CommonTokenStream tokens(&lexer);
+    // TokenStreamRewriter rewriter(&tokens);
+    // rewriter.insertBefore(RepMakeLexer::NEW_LINE, "\n");
+    // TokenStream* ts = rewriter.getTokenStream();
+    // Token* firstToken = ts->get(0);
+    // std::cout << "First Token:" << lexer.getErrorDisplay(vocab.getDisplayName(firstToken->getType()));
+    // RepMakeParser parser(ts);
     RepMakeParser parser(&tokens);
     RepMakeParser::RepmakeContext* context = parser.repmake();
 

@@ -1,6 +1,5 @@
 target0:target1
-    task0
-
-#comment2
-target1:   #Comment
-    task1
+    taskA
+    taskB
+target1:
+target2:
