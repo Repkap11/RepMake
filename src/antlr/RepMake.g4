@@ -8,7 +8,7 @@ LINE_COMMENT: '//' ~[\r\n]* -> channel(HIDDEN);
 COMMENT: '#' ~( '\r' | '\n')* -> channel(HIDDEN);
 IDENT: NEW_LINE (SPACES | '\t'+);
 
-IDENTIFIER: [a-zA-Z0-9_]+;
+IDENTIFIER: [a-zA-Z0-9_.]+;
 
 NEW_LINE: [\r?\n];
 SPACES: ' '+;

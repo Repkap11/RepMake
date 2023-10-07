@@ -1,5 +1,13 @@
 all: example
+    sleep 1
     ./example
 
-example:
-    gcc -o example example.c
+example: example.o
+    sleep 1
+    gcc example.o -o example 
+
+example.o: example.c
+    sleep 1
+    gcc -c example.c -o example.o
+
+example.c:

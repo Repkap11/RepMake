@@ -28,5 +28,7 @@ class Rule {
     std::unordered_set<Rule*> triggers;
     std::unordered_set<Rule*> deps;
     std::vector<std::string> tasks;
+    long change_timestamp;
+    long newest_dep_timestamp;
     static void runTasksInOrder(std::unordered_set<std::string>& targets_to_run, std::unordered_map<std::string, Rule>& rules);
 };
