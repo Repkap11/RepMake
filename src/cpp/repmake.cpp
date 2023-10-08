@@ -24,7 +24,9 @@ int main(int argc, const char* argv[]) {
     stream.seekg(0, std::ios::beg);
 
     char* buffer = new char[fileSize];
-    buffer[0] = '\n';
+    // Add a new line since i couldn't figure out how to write my rule without needing start of line token.
+    // Use \n instead of \n so it doesn't offset the line count (kinda hacky, but works).
+    buffer[0] = '\r';
     stream.read(&buffer[1], fileSize);
 
     ANTLRInputStream input(buffer, fileSize);
