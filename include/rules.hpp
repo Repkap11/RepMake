@@ -7,7 +7,18 @@
 
 class Rule;
 
-#define OLDEST_TIMESTAMP 0L
+#define RELATIVE_TIME 1
+
+#if RELATIVE_TIME
+#define REPMAKE_TIME int64_t
+#define REPMAKE_TIME_MAX INT64_MAX
+#define REPMAKE_OLDEST_TIMESTAMP INT64_MIN
+
+#else
+#define REPMAKE_TIME uint64_t
+#define REPMAKE_TIME_MAX UINT64_MAX
+#define REPMAKE_OLDEST_TIMESTAMP 0
+#endif
 
 class Rule {
    public:
@@ -34,7 +45,7 @@ class Rule {
     std::unordered_set<Rule*> dep_rules;
     std::unordered_set<std::string> dep_files;
     std::vector<std::string> tasks;
-    uint64_t self_modified_timestamp;
-    uint64_t deps_modified_timestamp;
-    static void runTasksInOrder(std::unordered_set<std::string>& targets_to_run, std::unordered_map<std::string, Rule>& rules);
+    REPMAKE_TIME self_modified_timestamp;
+    REPMAKE_TIME deps_modified_timestamp;
+    static void runTasksInOrder(const std::unordered_set<std::string>& targets_to_run, std::unordered_map<std::string, Rule>& rules);
 };

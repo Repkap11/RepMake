@@ -34,7 +34,7 @@ DEPS = \
 all: out/$(TARGET)
 
 dev: out/$(TARGET)
-	@cd example && ../$<
+	@cd example && ../$< example example.o
 
 out:
 	mkdir -p $@
@@ -79,6 +79,8 @@ out/$(TARGET): $(OBJECTS)
 clean-example:
 	rm -f example/example
 	rm -f example/*.o
+	sleep 1
+	touch example/*.c
 
 vars:
 	@echo "$(BEFORE_VARS) $(AFTER_VARS)" | xargs -n1 | sort | uniq -u

@@ -20,30 +20,34 @@ static int runTasks(const Rule* rule) {
     return 0;
 }
 
-static uint64_t getFileTimestamp(std::string fileName) {
+static REPMAKE_TIME getFileTimestamp(REPMAKE_TIME start_time, std::string fileName) {
     struct stat result;
     if (stat(fileName.c_str(), &result) == 0) {
-        uint64_t mod_time = result.st_mtime * 1000 + result.st_mtim.tv_nsec / 1000000;
+        REPMAKE_TIME mod_time = result.st_mtime * 1000 + result.st_mtim.tv_nsec / 1000000;
         // printf("Mod Ago:%.2f %s\n", -(mod_time - (start_time + 1) * 1000) / 1000.0f, fileName.c_str());
+#if RELATIVE_TIME
+        return mod_time - start_time;
+#else
         return mod_time;
+#endif
     } else {
         // printf("Mod Ago:N/A %s\n", fileName.c_str());
-        return OLDEST_TIMESTAMP;
+        return REPMAKE_OLDEST_TIMESTAMP;
     }
 }
-uint64_t currentTime(void) {
+REPMAKE_TIME currentTime(void) {
     long ms;   // Milliseconds
     time_t s;  // Seconds
     struct timespec spec;
     clock_gettime(CLOCK_REALTIME, &spec);
-    uint64_t cur_time = spec.tv_sec * 1000 + spec.tv_nsec / 1000000;
+    REPMAKE_TIME cur_time = spec.tv_sec * 1000 + spec.tv_nsec / 1000000;
     return cur_time;
 }
 
-void Rule::runTasksInOrder(std::unordered_set<std::string>& targets_to_run, std::unordered_map<std::string, Rule>& rules) {
+void Rule::runTasksInOrder(const std::unordered_set<std::string>& targets_to_run, std::unordered_map<std::string, Rule>& rules) {
     bool did_any_work;
 
-    uint64_t cur_time = currentTime();
+    REPMAKE_TIME cur_time = currentTime();
 
     std::queue<Rule*> tasksToRun;
     // Mark any rule directly asked for.
@@ -53,39 +57,24 @@ void Rule::runTasksInOrder(std::unordered_set<std::string>& targets_to_run, std:
         auto pos = targets_to_run.find(rule->name);
         if (pos != targets_to_run.end()) {
             // The rules given in our task are directly asked for, give it a timestamp of right now so it will always be run.
-            rule->self_modified_timestamp = OLDEST_TIMESTAMP;
-            targets_to_run.erase(pos);
+            rule->self_modified_timestamp = REPMAKE_OLDEST_TIMESTAMP;
+            std::cout << "";
+            // targets_to_run.erase(pos);
             rule->hasBeenAddedToTasks = true;
             tasksToRun.push(rule);
         } else {
             // The rule wasn't asked for, give it it's real modified timestamp based in the files it depends on.
-            rule->self_modified_timestamp = getFileTimestamp(it->first);
-            uint64_t timestamp = UINT64_MAX;
-            for (std::string dep_file : rule->dep_files) {
-                uint64_t dep_timestamp = getFileTimestamp(dep_file);
-                if (dep_timestamp < timestamp) {
-                    timestamp = dep_timestamp;
-                }
-            }
-            rule->deps_modified_timestamp = timestamp;
+            rule->self_modified_timestamp = getFileTimestamp(cur_time, it->first);
             std::cout << "";
         }
-    }
-
-    // Print any errors if an asked for rule wasn't found.
-    if (!targets_to_run.empty()) {
-        std::cout << "No targets found: [";
-        for (std::string target : targets_to_run) {
-            std::cout << " " << target;
+        REPMAKE_TIME timestamp = REPMAKE_TIME_MAX;
+        for (std::string dep_file : rule->dep_files) {
+            REPMAKE_TIME dep_timestamp = getFileTimestamp(cur_time, dep_file);
+            if (dep_timestamp < timestamp) {
+                timestamp = dep_timestamp;
+            }
         }
-        std::cout << " ]" << std::endl;
-
-        std::cout << "Known rules are: [";
-        for (auto rule : rules) {
-            std::cout << " " << rule.first;
-        }
-        std::cout << " ]" << std::endl;
-        return;
+        rule->deps_modified_timestamp = timestamp;
     }
 
     // Add all the dependent rules of the requested rules to the tasksToRun queue.
@@ -118,28 +107,32 @@ void Rule::runTasksInOrder(std::unordered_set<std::string>& targets_to_run, std:
             runnableRules.push(rule);
         }
     }
+    bool did_any_task = false;
     // Go through the runnable rules and run them, queueing any dependent rule which can now also be run.
     while (!runnableRules.empty()) {
         const Rule* rule = runnableRules.front();
         runnableRules.pop();
 
-        uint64_t self_modified_timestamp = rule->self_modified_timestamp;
-        uint64_t deps_modified_timestamp = rule->deps_modified_timestamp;
-        int64_t time_diff = self_modified_timestamp - deps_modified_timestamp;
-        if (time_diff < 0) {
+        REPMAKE_TIME self_modified_timestamp = rule->self_modified_timestamp;
+        REPMAKE_TIME deps_modified_timestamp = rule->deps_modified_timestamp;
+        if (self_modified_timestamp < deps_modified_timestamp) {
+            did_any_task = true;
             int ret = runTasks(rule);
             if (ret) {
-                std::cout << "Task failed!" << std::endl;
                 return;
             }
+#if RELATIVE_TIME
+            self_modified_timestamp = 0;
+#else
             self_modified_timestamp = cur_time;
+#endif
         }
 
         // }
         // for (const auto& it : rules) {}
         for (auto trigger : rule->triggers) {
             trigger->num_triggs_left -= 1;
-            uint64_t trig_deps_modified_timestamp = trigger->deps_modified_timestamp;
+            REPMAKE_TIME trig_deps_modified_timestamp = trigger->deps_modified_timestamp;
             if (trig_deps_modified_timestamp < self_modified_timestamp) {
                 trigger->deps_modified_timestamp = self_modified_timestamp;
             }
@@ -147,6 +140,14 @@ void Rule::runTasksInOrder(std::unordered_set<std::string>& targets_to_run, std:
                 runnableRules.push(trigger);
             }
         }
+    }
+    if (!did_any_task) {
+        std::cout << "Nothing to be done for: [";
+        for (std::string target : targets_to_run) {
+            std::cout << " " << target;
+        }
+        std::cout << " ]" << std::endl;
+        return;
     }
     bool hasDoneLabel = false;
     for (const auto& it : rules) {
