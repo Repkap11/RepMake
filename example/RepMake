@@ -1,5 +1,9 @@
-run: example
+run: example nothing
     ./example
+    ls
+    ./example
+
+nothing:
 
 example: example.o lib.o
     gcc example.o lib.o -o example

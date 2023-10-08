@@ -9,39 +9,29 @@
 #include <iostream>
 #include <queue>
 
-static int runTasks(const std::string& name, const std::vector<std::string>& tasks) {
+static int runTasks(const std::string& name, const std::string& tasks) {
     // TODO make all of these run in the same shell.
-    for (const std::string& task : tasks) {
-        std::cout << task << std::endl;
+    std::cout << tasks << std::endl;
 #if DRY_RUN
 #else
-        char** args = new char*[tasks.size() + 3];
-        size_t i = 0;
-        char* cmd = strdup("/usr/bin/bash");
-        char* dash_c = strdup("-c");
-        args[i++] = cmd;
-        args[i++] = dash_c;
-        for (const std::string& str : tasks) {
-            args[i++] = (char*)str.c_str();
-        }
-        args[i++] = NULL;
+    char* cmd = strdup("/usr/bin/bash");
+    char* dash_c = strdup("-c");
+    char* args[4] = {cmd, dash_c, (char*)tasks.c_str(), NULL};
 
-        pid_t pid = fork();
-        if (pid == -1) {
-            std::cout << "Fork error" << std::endl;
-        }
-        if (pid == 0) {  // child pid
-            execvp(args[0], args);
-            exit(0);
-        }
-        // orig pid
-        waitpid(pid, 0, 0);
-        free(args);
-        free(dash_c);
-        free(cmd);
+    pid_t pid = fork();
+    if (pid == -1) {
+        std::cout << "Fork error" << std::endl;
+    }
+    if (pid == 0) {  // child pid
+        execvp(args[0], args);
+        exit(0);
+    }
+    // orig pid
+    waitpid(pid, 0, 0);
+    free(dash_c);
+    free(cmd);
 
 #endif
-    }
     return 0;
 }
 
@@ -81,7 +71,6 @@ void Rule::runTasksInOrder(const std::unordered_set<std::string>& targets_to_run
         Rule* rule = &it->second;
         auto pos = targets_to_run.find(rule->name);
         rule->self_modified_timestamp = getFileTimestamp(cur_time, it->first);
-        std::cout << "";
         if (pos != targets_to_run.end()) {
             // The rules given in our task are directly asked for, give it a timestamp of right now so it will always be run.
             // targets_to_run.erase(pos);
@@ -138,8 +127,8 @@ void Rule::runTasksInOrder(const std::unordered_set<std::string>& targets_to_run
         REPMAKE_TIME self_modified_timestamp = rule->self_modified_timestamp;
         REPMAKE_TIME deps_modified_timestamp = rule->deps_modified_timestamp;
         if (self_modified_timestamp < deps_modified_timestamp) {
-            const std::vector<std::string>& tasks = rule->tasks;
-            if (tasks.size() != 0) {
+            const std::string& tasks = rule->tasks;
+            if (tasks != "") {
                 did_any_task = true;
                 int ret = runTasks(rule->name, tasks);
                 if (ret) {

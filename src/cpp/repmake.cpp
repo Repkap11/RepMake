@@ -88,13 +88,12 @@ int main(int argc, const char* argv[]) {
 
         std::vector<std::string> tasks_vector;
         RepMakeParser::TasksContext* tasks = rule->tasks();
+        std::string tasks_str;
         if (tasks != NULL) {
-            for (RepMakeParser::TaskContext* task : tasks->task()) {
-                tasks_vector.emplace_back(task->getText());
-            }
+            tasks_str = tasks->getText();
         }
 
-        bool duplicate = !all_rules_map.insert({rule_name, {rule_name, std::move(deps_set), std::move(tasks_vector)}}).second;
+        bool duplicate = !all_rules_map.insert({rule_name, {rule_name, std::move(deps_set), std::move(tasks_str)}}).second;
         if (duplicate) {
             std::cerr << "Error: Duplicate rule defined: \"" << rule_name << "\"" << std::endl;
             error_flag = true;
@@ -111,7 +110,7 @@ int main(int argc, const char* argv[]) {
             }
             auto pos = all_rules_map.find(dep_str);
             if (pos != all_rules_map.end()) {
-                //The depepdency is a rule
+                // The depepdency is a rule
                 Rule* dep = &pos->second;
                 rule.dep_rules.insert(dep);
                 dep->triggers.emplace(&rule);
