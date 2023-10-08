@@ -24,7 +24,7 @@ class Rule;
 
 class Rule {
    public:
-    Rule(std::string name, std::unordered_set<std::string> deps_str, std::string tasks)  //
+    Rule(std::string name, std::unordered_set<std::string> deps_str, std::vector<std::string> tasks)  //
         : name(name),
           deps_str(deps_str),
           tasks(tasks) {}
@@ -46,7 +46,7 @@ class Rule {
     std::unordered_set<Rule*> triggers;
     std::unordered_set<Rule*> dep_rules;
     std::unordered_set<std::string> dep_files;
-    std::string tasks;
+    std::vector<std::string> tasks;
     REPMAKE_TIME self_modified_timestamp;
     REPMAKE_TIME deps_modified_timestamp;
     static void runTasksInOrder(const std::unordered_set<std::string>& targets_to_run, std::unordered_map<std::string, Rule>& rules);

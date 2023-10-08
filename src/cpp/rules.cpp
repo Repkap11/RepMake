@@ -8,16 +8,23 @@
 
 #include <iostream>
 #include <queue>
+#include <sstream>
 
-static int runTasks(const std::string& name, const std::string& tasks) {
+static int runTasks(const std::string& name, const std::vector<std::string>& tasks) {
     // TODO make all of these run in the same shell.
-    std::cout << tasks << std::endl;
-#if DRY_RUN
-#else
     char* cmd = strdup("/usr/bin/bash");
     char* dash_c = strdup("-c");
-    char* args[4] = {cmd, dash_c, (char*)tasks.c_str(), NULL};
 
+    std::stringstream ss;
+    for (const std::string& task : tasks) {
+        std::cout << task << std::endl;
+        ss << task << "\n";
+    }
+    std::string comands = ss.str();
+    char* args[4] = {cmd, dash_c, (char*)(comands.c_str()), NULL};
+
+#if DRY_RUN
+#else
     pid_t pid = fork();
     if (pid == -1) {
         std::cout << "Fork error" << std::endl;
@@ -28,10 +35,10 @@ static int runTasks(const std::string& name, const std::string& tasks) {
     }
     // orig pid
     waitpid(pid, 0, 0);
+#endif
     free(dash_c);
     free(cmd);
 
-#endif
     return 0;
 }
 
@@ -127,8 +134,8 @@ void Rule::runTasksInOrder(const std::unordered_set<std::string>& targets_to_run
         REPMAKE_TIME self_modified_timestamp = rule->self_modified_timestamp;
         REPMAKE_TIME deps_modified_timestamp = rule->deps_modified_timestamp;
         if (self_modified_timestamp < deps_modified_timestamp) {
-            const std::string& tasks = rule->tasks;
-            if (tasks != "") {
+            const std::vector<std::string>& tasks = rule->tasks;
+            if (tasks.size() != 0) {
                 did_any_task = true;
                 int ret = runTasks(rule->name, tasks);
                 if (ret) {
