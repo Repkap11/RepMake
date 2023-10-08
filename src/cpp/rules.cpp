@@ -1,7 +1,9 @@
 #include "rules.hpp"
 
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <iostream>
@@ -9,15 +11,35 @@
 
 static int runTasks(const std::string& name, const std::vector<std::string>& tasks) {
     // TODO make all of these run in the same shell.
-    for (std::string task : tasks) {
+    for (const std::string& task : tasks) {
         std::cout << task << std::endl;
 #if DRY_RUN
 #else
-        int ret = system(task.c_str());
-        if (ret != 0) {
-            std::cout << "Task failed for Target: " << name << std::endl;
-            return ret;
+        char** args = new char*[tasks.size() + 3];
+        size_t i = 0;
+        char* cmd = strdup("/usr/bin/bash");
+        char* dash_c = strdup("-c");
+        args[i++] = cmd;
+        args[i++] = dash_c;
+        for (const std::string& str : tasks) {
+            args[i++] = (char*)str.c_str();
         }
+        args[i++] = NULL;
+
+        pid_t pid = fork();
+        if (pid == -1) {
+            std::cout << "Fork error" << std::endl;
+        }
+        if (pid == 0) {  // child pid
+            execvp(args[0], args);
+            exit(0);
+        }
+        // orig pid
+        waitpid(pid, 0, 0);
+        free(args);
+        free(dash_c);
+        free(cmd);
+
 #endif
     }
     return 0;

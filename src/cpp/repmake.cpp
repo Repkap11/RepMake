@@ -37,7 +37,7 @@ int main(int argc, const char* argv[]) {
         lexer.reset();
         // Print out the tokens.
         std::vector<std::unique_ptr<Token>> tokens = lexer.getAllTokens();
-        for (std::unique_ptr<Token>& token : tokens) {
+        for (const std::unique_ptr<Token>& token : tokens) {
             if (token->getChannel() != Token::DEFAULT_CHANNEL) {
                 continue;
             }
