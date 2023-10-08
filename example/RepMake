@@ -1,8 +1,15 @@
-all: example
+all: build run
+
+build: example
+
+run: build
     ./example
 
-example: example.o
-    gcc example.o -o example 
+example: example.o lib.o
+    gcc example.o lib.o -o example
 
 example.o: example.c
     gcc -c example.c -o example.o
+
+lib.o: lib.c
+    gcc -c lib.c -o lib.o

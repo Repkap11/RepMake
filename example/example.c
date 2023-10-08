@@ -1,6 +1,9 @@
 #include <stdio.h>
 
-int main(){
-    printf("Hello, World!\n");
+extern void lib_hello();
+
+int main() {
+    printf("Hello, World3\n");
+    lib_hello();
     return 0;
 }

@@ -7,7 +7,7 @@
 
 class Rule;
 
-#define OLDEST_TIMESTAMP -100000L
+#define OLDEST_TIMESTAMP 0L
 
 class Rule {
    public:
@@ -34,7 +34,7 @@ class Rule {
     std::unordered_set<Rule*> dep_rules;
     std::unordered_set<std::string> dep_files;
     std::vector<std::string> tasks;
-    long self_modified_timestamp;
-    long deps_modified_timestamp;
+    uint64_t self_modified_timestamp;
+    uint64_t deps_modified_timestamp;
     static void runTasksInOrder(std::unordered_set<std::string>& targets_to_run, std::unordered_map<std::string, Rule>& rules);
 };

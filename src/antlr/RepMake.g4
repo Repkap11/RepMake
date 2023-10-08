@@ -20,7 +20,7 @@ repmake: (rep_make_rule | IDENT | NEW_LINE | SPACES)* EOF;
 rep_make_rule:
 	NEW_LINE rule_name SPACES? ':' SPACES? dependency_list? IDENT? tasks? NEW_LINE?;
 
-dependency_list: rule_name ( ',' rule_name)*?;
+dependency_list: rule_name (rule_name)*?;
 
 tasks: (IDENT task)+;
 

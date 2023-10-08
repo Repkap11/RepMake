@@ -20,22 +20,31 @@ static int runTasks(const Rule* rule) {
     return 0;
 }
 
-static long getFileTimestamp(long start_time, std::string fileName) {
+static uint64_t getFileTimestamp(std::string fileName) {
     struct stat result;
     if (stat(fileName.c_str(), &result) == 0) {
-        long mod_time = result.st_mtime;
-        // printf("Mod Ago:%ld %s\n", -(mod_time - start_time), fileName.c_str());
-        return mod_time - start_time;
+        uint64_t mod_time = result.st_mtime * 1000 + result.st_mtim.tv_nsec / 1000000;
+        // printf("Mod Ago:%.2f %s\n", -(mod_time - (start_time + 1) * 1000) / 1000.0f, fileName.c_str());
+        return mod_time;
     } else {
         // printf("Mod Ago:N/A %s\n", fileName.c_str());
         return OLDEST_TIMESTAMP;
     }
 }
+uint64_t currentTime(void) {
+    long ms;   // Milliseconds
+    time_t s;  // Seconds
+    struct timespec spec;
+    clock_gettime(CLOCK_REALTIME, &spec);
+    uint64_t cur_time = spec.tv_sec * 1000 + spec.tv_nsec / 1000000;
+    return cur_time;
+}
 
 void Rule::runTasksInOrder(std::unordered_set<std::string>& targets_to_run, std::unordered_map<std::string, Rule>& rules) {
     bool did_any_work;
 
-    long start_time = time(NULL);
+    uint64_t cur_time = currentTime();
+
     std::queue<Rule*> tasksToRun;
     // Mark any rule directly asked for.
     // Mark every rule with their change_timestamp.
@@ -50,10 +59,10 @@ void Rule::runTasksInOrder(std::unordered_set<std::string>& targets_to_run, std:
             tasksToRun.push(rule);
         } else {
             // The rule wasn't asked for, give it it's real modified timestamp based in the files it depends on.
-            rule->self_modified_timestamp = getFileTimestamp(start_time, it->first);
-            long timestamp = 0;
+            rule->self_modified_timestamp = getFileTimestamp(it->first);
+            uint64_t timestamp = UINT64_MAX;
             for (std::string dep_file : rule->dep_files) {
-                long dep_timestamp = getFileTimestamp(start_time, dep_file);
+                uint64_t dep_timestamp = getFileTimestamp(dep_file);
                 if (dep_timestamp < timestamp) {
                     timestamp = dep_timestamp;
                 }
@@ -114,21 +123,23 @@ void Rule::runTasksInOrder(std::unordered_set<std::string>& targets_to_run, std:
         const Rule* rule = runnableRules.front();
         runnableRules.pop();
 
-        long self_modified_timestamp = rule->self_modified_timestamp;
-        long deps_modified_timestamp = rule->deps_modified_timestamp;
-        if (self_modified_timestamp < deps_modified_timestamp) {
+        uint64_t self_modified_timestamp = rule->self_modified_timestamp;
+        uint64_t deps_modified_timestamp = rule->deps_modified_timestamp;
+        int64_t time_diff = self_modified_timestamp - deps_modified_timestamp;
+        if (time_diff < 0) {
             int ret = runTasks(rule);
             if (ret) {
+                std::cout << "Task failed!" << std::endl;
                 return;
             }
-            self_modified_timestamp = 0;
+            self_modified_timestamp = cur_time;
         }
 
         // }
         // for (const auto& it : rules) {}
         for (auto trigger : rule->triggers) {
             trigger->num_triggs_left -= 1;
-            long trig_deps_modified_timestamp = trigger->deps_modified_timestamp;
+            uint64_t trig_deps_modified_timestamp = trigger->deps_modified_timestamp;
             if (trig_deps_modified_timestamp < self_modified_timestamp) {
                 trigger->deps_modified_timestamp = self_modified_timestamp;
             }

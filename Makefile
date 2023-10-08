@@ -78,8 +78,7 @@ out/$(TARGET): $(OBJECTS)
 
 clean-example:
 	rm -f example/example
-	rm -f example/example.o
-	touch example/example.c
+	rm -f example/*.o
 
 vars:
 	@echo "$(BEFORE_VARS) $(AFTER_VARS)" | xargs -n1 | sort | uniq -u
