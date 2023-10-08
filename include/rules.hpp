@@ -7,9 +7,14 @@
 
 class Rule;
 
+#define OLDEST_TIMESTAMP -100000L
+
 class Rule {
    public:
-    Rule(std::string name, std::unordered_set<std::string> deps_str, std::vector<std::string> tasks) : name(name), deps_str(deps_str), tasks(tasks) {}
+    Rule(std::string name, std::unordered_set<std::string> deps_str, std::vector<std::string> tasks)  //
+        : name(name),
+          deps_str(deps_str),
+          tasks(tasks) {}
 
     bool operator==(const Rule& otherRule) const {
         return this->name == otherRule.name;
@@ -26,9 +31,10 @@ class Rule {
     std::unordered_set<std::string> deps_str;
     size_t num_triggs_left;
     std::unordered_set<Rule*> triggers;
-    std::unordered_set<Rule*> deps;
+    std::unordered_set<Rule*> dep_rules;
+    std::unordered_set<std::string> dep_files;
     std::vector<std::string> tasks;
-    long change_timestamp;
-    long newest_dep_timestamp;
+    long self_modified_timestamp;
+    long deps_modified_timestamp;
     static void runTasksInOrder(std::unordered_set<std::string>& targets_to_run, std::unordered_map<std::string, Rule>& rules);
 };

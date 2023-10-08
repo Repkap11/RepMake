@@ -109,13 +109,13 @@ int main(int argc, const char* argv[]) {
                 std::cerr << "Error: \"" << dep_str << "\" depends on itself." << std::endl;
             }
             auto pos = all_rules_map.find(dep_str);
-            if (pos == all_rules_map.end()) {
-                std::cerr << "Error: Dependency \"" << dep_str << "\" not defined in rule \"" << rule_name << "\"" << std::endl;
-                error_flag = true;
+            if (pos != all_rules_map.end()) {
+                //The depepdency is a rule
+                Rule* dep = &pos->second;
+                rule.dep_rules.insert(dep);
+                dep->triggers.emplace(&rule);
             }
-            Rule* dep = &all_rules_map.find(dep_str)->second;
-            rule.deps.insert(dep);
-            dep->triggers.emplace(&rule);
+            rule.dep_files.emplace(dep_str);
         }
     }
     if (error_flag) {

@@ -24,11 +24,11 @@ static long getFileTimestamp(long start_time, std::string fileName) {
     struct stat result;
     if (stat(fileName.c_str(), &result) == 0) {
         long mod_time = result.st_mtime;
-        printf("Mod Ago:%ld %s\n", -(mod_time - start_time), fileName.c_str());
-        return mod_time;
+        // printf("Mod Ago:%ld %s\n", -(mod_time - start_time), fileName.c_str());
+        return mod_time - start_time;
     } else {
-        printf("Mod Ago:N/A %s\n", fileName.c_str());
-        return start_time;
+        // printf("Mod Ago:N/A %s\n", fileName.c_str());
+        return OLDEST_TIMESTAMP;
     }
 }
 
@@ -44,15 +44,22 @@ void Rule::runTasksInOrder(std::unordered_set<std::string>& targets_to_run, std:
         auto pos = targets_to_run.find(rule->name);
         if (pos != targets_to_run.end()) {
             // The rules given in our task are directly asked for, give it a timestamp of right now so it will always be run.
-            rule->change_timestamp = 0;
+            rule->self_modified_timestamp = OLDEST_TIMESTAMP;
             targets_to_run.erase(pos);
-            if (rule->change_timestamp <= start_time) {
-                rule->hasBeenAddedToTasks = true;
-                tasksToRun.push(rule);
-            }
+            rule->hasBeenAddedToTasks = true;
+            tasksToRun.push(rule);
         } else {
-            // The rule wasn't asked for, give it it's real modified time stamp.
-            rule->change_timestamp = getFileTimestamp(start_time, it->first);
+            // The rule wasn't asked for, give it it's real modified timestamp based in the files it depends on.
+            rule->self_modified_timestamp = getFileTimestamp(start_time, it->first);
+            long timestamp = 0;
+            for (std::string dep_file : rule->dep_files) {
+                long dep_timestamp = getFileTimestamp(start_time, dep_file);
+                if (dep_timestamp < timestamp) {
+                    timestamp = dep_timestamp;
+                }
+            }
+            rule->deps_modified_timestamp = timestamp;
+            std::cout << "";
         }
     }
 
@@ -76,7 +83,7 @@ void Rule::runTasksInOrder(std::unordered_set<std::string>& targets_to_run, std:
     while (!tasksToRun.empty()) {
         Rule* rule = tasksToRun.front();
         tasksToRun.pop();
-        for (Rule* dep : rule->deps) {
+        for (Rule* dep : rule->dep_rules) {
             if (!dep->hasBeenAddedToTasks) {
                 dep->hasBeenAddedToTasks = true;
                 tasksToRun.push(dep);
@@ -92,14 +99,13 @@ void Rule::runTasksInOrder(std::unordered_set<std::string>& targets_to_run, std:
             continue;
         }
         int numDepsToRun = 0;
-        for (Rule* dep : rule->deps) {
+        for (Rule* dep : rule->dep_rules) {
             if (dep->hasBeenAddedToTasks) {
                 numDepsToRun++;
             }
         }
         rule->num_triggs_left = numDepsToRun;
         if (rule->num_triggs_left == 0) {
-            rule->newest_dep_timestamp = rule->change_timestamp;
             runnableRules.push(rule);
         }
     }
@@ -107,21 +113,24 @@ void Rule::runTasksInOrder(std::unordered_set<std::string>& targets_to_run, std:
     while (!runnableRules.empty()) {
         const Rule* rule = runnableRules.front();
         runnableRules.pop();
-        long rule_timestamp = rule->newest_dep_timestamp;
 
-        if (rule_timestamp > rule->change_timestamp) {
+        long self_modified_timestamp = rule->self_modified_timestamp;
+        long deps_modified_timestamp = rule->deps_modified_timestamp;
+        if (self_modified_timestamp < deps_modified_timestamp) {
             int ret = runTasks(rule);
             if (ret) {
                 return;
             }
+            self_modified_timestamp = 0;
         }
+
         // }
         // for (const auto& it : rules) {}
         for (auto trigger : rule->triggers) {
             trigger->num_triggs_left -= 1;
-            long trig_newest_dep_timestamp = trigger->newest_dep_timestamp;
-            if (rule_timestamp > trig_newest_dep_timestamp) {
-                trigger->newest_dep_timestamp = rule_timestamp;
+            long trig_deps_modified_timestamp = trigger->deps_modified_timestamp;
+            if (trig_deps_modified_timestamp < self_modified_timestamp) {
+                trigger->deps_modified_timestamp = self_modified_timestamp;
             }
             if (trigger->hasBeenAddedToTasks && trigger->num_triggs_left == 0) {
                 runnableRules.push(trigger);
