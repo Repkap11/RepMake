@@ -28,6 +28,7 @@ int main(int argc, const char* argv[]) {
     stream.read(&buffer[1], fileSize);
 
     ANTLRInputStream input(buffer, fileSize);
+    delete[] buffer;
     input.name = inputFile;
     RepMakeLexer lexer(&input);
     auto vocab = lexer.getVocabulary();

@@ -14,10 +14,11 @@ MAKEFLAGS += --no-builtin-rules
 CFLAGS_ANTLR = -std=c++11 -Wno-attributes
 CFLAGS_CPP = -Wall -Wextra -std=c++11 -Wno-unused-parameter -Wno-unused-variable -Wno-attributes
 
-# CFLAGS += -O3
+# CFLAGS_ANTLR += -O3
+# CFLAGS_CPP += -O3
 CFLAGS_ANTLR += -g
 CFLAGS_CPP += -g
-
+# 
 
 OBJECTS = \
 	$(patsubst src/cpp/%.cpp,out/%.o, $(wildcard src/cpp/*.cpp)) \
@@ -36,25 +37,28 @@ all: out/$(TARGET)
 dev: out/$(TARGET)
 	@cd example && ../$<
 
+valgrind: out/$(TARGET)
+	@cd example && valgrind --leak-check=full -s ../$<
+
 out:
 	mkdir -p $@
 	
 clean:
 	rm -rf out
 
-.PHONY: all dev clean
+.PHONY: all dev clean valgrind
 
-out/%.o: src/cpp/%.cpp out/antlr_src | out
+out/%.o: src/cpp/%.cpp out/antlr_src Makefile | out
 	@#Use g++ to build o file and a dependecy tree .d file for every cpp file
 	ccache g++ $(INCLUDES_CPP) $(CFLAGS_CPP) -MMD -MP -MF $(patsubst %.o,%.d,$@) -MT $(patsubst %.d,%.o,$@) -c $< -o $@
 
-out/antlr_src/%.cpp: src/antlr/RepMake.g4 out/antlr_src
+out/antlr_src/%.cpp: src/antlr/RepMake.g4 out/antlr_src Makefile
 	touch $@
 
 out/antlr_out:
 	mkdir -p $@
 
-out/antlr_out/%.o: out/antlr_src/%.cpp src/antlr/RepMake.g4 | out/antlr_out
+out/antlr_out/%.o: out/antlr_src/%.cpp src/antlr/RepMake.g4 Makefile | out/antlr_out
 	ccache g++ $(INCLUDES_ANTLR) $(CFLAGS_ANTLR) -MMD -MP -MF $(patsubst %.o,%.d,$@) -MT $(patsubst %.d,%.o,$@) -c $< -o $@
 
 out/antlr_src: src/antlr/RepMake.g4

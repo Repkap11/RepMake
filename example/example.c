@@ -3,7 +3,7 @@
 extern void lib_hello();
 
 int main() {
-    printf("Hello, World3\n");
+    printf("Hello, World\n");
     lib_hello();
     return 0;
 }

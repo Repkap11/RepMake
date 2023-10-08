@@ -11,11 +11,14 @@ static int runTasks(const std::string& name, const std::vector<std::string>& tas
     // TODO make all of these run in the same shell.
     for (std::string task : tasks) {
         std::cout << task << std::endl;
+#if DRY_RUN
+#else
         int ret = system(task.c_str());
         if (ret != 0) {
             std::cout << "Task failed for Target: " << name << std::endl;
             return ret;
         }
+#endif
     }
     return 0;
 }

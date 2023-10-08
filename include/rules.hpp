@@ -7,6 +7,8 @@
 
 class Rule;
 
+#define DRY_RUN 0
+
 #define RELATIVE_TIME 1
 
 #if RELATIVE_TIME
