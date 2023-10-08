@@ -7,13 +7,13 @@
 #include <iostream>
 #include <queue>
 
-static int runTasks(const Rule* rule) {
+static int runTasks(const std::string& name, const std::vector<std::string>& tasks) {
     // TODO make all of these run in the same shell.
-    for (std::string task : rule->tasks) {
+    for (std::string task : tasks) {
         std::cout << task << std::endl;
         int ret = system(task.c_str());
         if (ret != 0) {
-            std::cout << "Task failed for Target: " << rule->name << std::endl;
+            std::cout << "Task failed for Target: " << name << std::endl;
             return ret;
         }
     }
@@ -55,18 +55,15 @@ void Rule::runTasksInOrder(const std::unordered_set<std::string>& targets_to_run
     for (auto it = rules.begin(); it != rules.end(); it++) {
         Rule* rule = &it->second;
         auto pos = targets_to_run.find(rule->name);
+        rule->self_modified_timestamp = getFileTimestamp(cur_time, it->first);
+        std::cout << "";
         if (pos != targets_to_run.end()) {
             // The rules given in our task are directly asked for, give it a timestamp of right now so it will always be run.
-            rule->self_modified_timestamp = REPMAKE_OLDEST_TIMESTAMP;
-            std::cout << "";
             // targets_to_run.erase(pos);
             rule->hasBeenAddedToTasks = true;
             tasksToRun.push(rule);
-        } else {
-            // The rule wasn't asked for, give it it's real modified timestamp based in the files it depends on.
-            rule->self_modified_timestamp = getFileTimestamp(cur_time, it->first);
-            std::cout << "";
         }
+
         REPMAKE_TIME timestamp = REPMAKE_TIME_MAX;
         for (std::string dep_file : rule->dep_files) {
             REPMAKE_TIME dep_timestamp = getFileTimestamp(cur_time, dep_file);
@@ -116,10 +113,13 @@ void Rule::runTasksInOrder(const std::unordered_set<std::string>& targets_to_run
         REPMAKE_TIME self_modified_timestamp = rule->self_modified_timestamp;
         REPMAKE_TIME deps_modified_timestamp = rule->deps_modified_timestamp;
         if (self_modified_timestamp < deps_modified_timestamp) {
-            did_any_task = true;
-            int ret = runTasks(rule);
-            if (ret) {
-                return;
+            const std::vector<std::string>& tasks = rule->tasks;
+            if (tasks.size() != 0) {
+                did_any_task = true;
+                int ret = runTasks(rule->name, tasks);
+                if (ret) {
+                    return;
+                }
             }
 #if RELATIVE_TIME
             self_modified_timestamp = 0;

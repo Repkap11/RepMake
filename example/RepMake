@@ -1,9 +1,5 @@
-# all: build run
-
-# build: example
-
-# run: example
-#     ./example
+run: example
+    ./example
 
 example: example.o lib.o
     gcc example.o lib.o -o example
