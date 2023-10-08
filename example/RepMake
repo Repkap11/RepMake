@@ -1,9 +1,5 @@
-run: example nothing
-    ./example
-
 nothing:
-    LLAMA=fish
-    echo I am a: ${LLAMA}
+    ./example
 
 example: example.o lib.o
     gcc example.o lib.o -o example

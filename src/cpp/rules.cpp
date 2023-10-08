@@ -1,14 +1,37 @@
 #include "rules.hpp"
 
+#include <errno.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/ptrace.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
+/* POSIX */
+#include <sys/user.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+/* Linux */
+#include <sys/ptrace.h>
+#include <syscall.h>
+
 #include <iostream>
 #include <queue>
 #include <sstream>
+
+#include "sys_map.hpp"
+
+#define FATAL(...)                               \
+    do {                                         \
+        fprintf(stderr, "strace: " __VA_ARGS__); \
+        fputc('\n', stderr);                     \
+        exit(EXIT_FAILURE);                      \
+    } while (0)
 
 static int runTasks(const std::string& name, const std::vector<std::string>& tasks) {
     // TODO make all of these run in the same shell.
@@ -18,7 +41,7 @@ static int runTasks(const std::string& name, const std::vector<std::string>& tas
     std::stringstream ss;
     for (const std::string& task : tasks) {
         std::cout << task << std::endl;
-        ss << task << "\n";
+        // ss << task << "\n";
     }
     std::string comands = ss.str();
     char* args[4] = {cmd, dash_c, (char*)(comands.c_str()), NULL};
@@ -30,11 +53,54 @@ static int runTasks(const std::string& name, const std::vector<std::string>& tas
         std::cout << "Fork error" << std::endl;
     }
     if (pid == 0) {  // child pid
+        ptrace(PTRACE_TRACEME, 0, 0, 0);
         execvp(args[0], args);
         exit(0);
     }
     // orig pid
-    waitpid(pid, 0, 0);
+    const char** sysMap = getSysMap();
+    waitpid(pid, 0, 0);  // sync with execvp
+    ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_EXITKILL);
+    for (;;) {
+        /* Enter next system call */
+        if (ptrace(PTRACE_SYSCALL, pid, 0, 0) == -1)
+            FATAL("%s", strerror(errno));
+        if (waitpid(pid, 0, 0) == -1)
+            FATAL("%s", strerror(errno));
+
+        /* Gather system call arguments */
+        struct user_regs_struct regs;
+        if (ptrace(PTRACE_GETREGS, pid, 0, &regs) == -1)
+            FATAL("%s", strerror(errno));
+        long syscall = regs.orig_rax;
+
+        /* Print a representation of the system call */
+        fprintf(stderr, "%s: %ld(%ld, %ld, %ld, %ld, %ld, %ld)",
+                sysMap[syscall], syscall,
+                (long)regs.rdi, (long)regs.rsi, (long)regs.rdx,
+                (long)regs.r10, (long)regs.r8, (long)regs.r9);
+        /* Run system call and stop on exit */
+
+        if (ptrace(PTRACE_SYSCALL, pid, 0, 0) == -1)
+            FATAL("%s", strerror(errno));
+        if (waitpid(pid, 0, 0) == -1)
+            FATAL("%s", strerror(errno));
+
+        /* Get system call result */
+        if (ptrace(PTRACE_GETREGS, pid, 0, &regs) == -1) {
+            fputs(" = ?\n", stderr);
+            if (errno == ESRCH)
+                exit(regs.rdi);  // system call was _exit(2) or similar
+            FATAL("%s", strerror(errno));
+        }
+
+        /* Print system call result */
+        fprintf(stderr, " = %ld\n", (long)regs.rax);
+        if (syscall == SYS_openat) {
+            printf("SYS_openat\n");
+        }
+    }
+
 #endif
     free(dash_c);
     free(cmd);
