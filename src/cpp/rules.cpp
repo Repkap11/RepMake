@@ -68,7 +68,8 @@ static int process_signals(pid_t child) {
     const char** sys_map = getSysMap();
     int status;
     while (1) {
-        ptrace(PTRACE_SYSCALL, child, 0, 0);
+        // ptrace(PTRACE_SYSCALL, child, 0, 0);
+        ptrace(PTRACE_CONT, child, 0, 0);
         waitpid(child, &status, 0);
 
         // if (status >> 16 == PTRACE_EVENT_FORK) {
@@ -83,7 +84,6 @@ static int process_signals(pid_t child) {
             printf("[Child exit with status %d]\n", child_status);
             return child_status;
         }
-
 
         // if (WIFSIGNALED(status)) {
         //     printf("Child exit due to signal %d\n", WTERMSIG(status));
@@ -121,24 +121,24 @@ static int process_signals(pid_t child) {
         // } else {
         //     printf("Child stopped due to signal %d\n", WSTOPSIG(status));
         // }
-// 
+        //
         int isSECTrap = status >> 8 == (SIGTRAP | (PTRACE_EVENT_SECCOMP << 8));
 
-        // if (isSECTrap) {
+        if (isSECTrap) {
             long syscall = ptrace(PTRACE_PEEKUSER, child, sizeof(long) * ORIG_RAX, 0);
             if (syscall == SYS_openat) {
                 char orig_file[PATH_MAX];
                 read_file(child, orig_file);
                 // const char* prefix_str = "/";
                 // if (strncmp(orig_file, prefix_str, strlen(prefix_str)) != 0) {
-                    printf("[Opening %s]\n", orig_file);
+                printf("[Opening %s]\n", orig_file);
                 // }
             } else {
                 // printf("OTHER:%ld:%s\n", syscall, sys_map[syscall]);
             }
-        // } else {
-        //     // printf("Not isSECTrap\n");
-        // }
+        } else {
+            // printf("Not isSECTrap\n");
+        }
         /* Find out file and re-direct if it is the target */
     }
 }
@@ -146,16 +146,17 @@ static int process_signals(pid_t child) {
 
 static int runTasks(const std::string& name, const std::vector<std::string>& tasks) {
     // TODO make all of these run in the same shell.
-    char* cmd = strdup("/usr/bin/bash");
+    char* cmd = strdup("/usr/bin/git");
     char* dash_c = strdup("-c");
 
     std::stringstream ss;
     for (const std::string& task : tasks) {
         std::cout << task << std::endl;
-        ss << task << "\n";
+        // ss << task << "\n";
+        ss << task;
     }
     std::string comands = ss.str();
-    char* args[4] = {cmd, dash_c, (char*)(comands.c_str()), NULL};
+    char* args[4] = {cmd, (char*)(comands.c_str()), NULL};
 
     int return_status = 0;
 #if DRY_RUN
@@ -180,14 +181,14 @@ static int runTasks(const std::string& name, const std::vector<std::string>& tas
         };
         ptrace(PTRACE_TRACEME, 0, 0, 0);
         /* To avoid the need for CAP_SYS_ADMIN */
-        if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1) {
+        if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0) {
             perror("prctl(PR_SET_NO_NEW_PRIVS)");
             return 1;
         }
-        // if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1) {
-        //     perror("when setting seccomp filter");
-        //     return 1;
-        // }
+        if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) < 0) {
+            perror("when setting seccomp filter");
+            return 1;
+        }
         kill(getpid(), SIGSTOP);
         execvp(args[0], args);
         printf("Child process ending\n");
