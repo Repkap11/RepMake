@@ -1,5 +1,6 @@
 #include "rules.hpp"
 
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/filter.h>
@@ -64,13 +65,117 @@ static void read_file(pid_t child, char* file) {
 #define SC_RETCODE (4 * EAX)
 #endif
 
+size_t get_tids(pid_t** const listptr, size_t* const sizeptr, const pid_t pid) {
+    char dirname[64];
+    DIR* dir;
+    pid_t* list;
+    size_t size, used = 0;
+
+    if (!listptr || !sizeptr || pid < (pid_t)1) {
+        errno = EINVAL;
+        return (size_t)0;
+    }
+
+    if (*sizeptr > 0) {
+        list = *listptr;
+        size = *sizeptr;
+    } else {
+        list = *listptr = NULL;
+        size = *sizeptr = 0;
+    }
+
+    if (snprintf(dirname, sizeof dirname, "/proc/%d/task/", (int)pid) >= (int)sizeof dirname) {
+        errno = ENOTSUP;
+        return (size_t)0;
+    }
+
+    dir = opendir(dirname);
+    if (!dir) {
+        errno = ESRCH;
+        return (size_t)0;
+    }
+
+    while (1) {
+        struct dirent* ent;
+        int value;
+        char dummy;
+
+        errno = 0;
+        ent = readdir(dir);
+        if (!ent)
+            break;
+
+        /* Parse TIDs. Ignore non-numeric entries. */
+        if (sscanf(ent->d_name, "%d%c", &value, &dummy) != 1)
+            continue;
+
+        /* Ignore obviously invalid entries. */
+        if (value < 1)
+            continue;
+
+        /* Make sure there is room for another TID. */
+        if (used >= size) {
+            size = (used | 127) + 128;
+            list = (pid_t*)realloc(list, size * sizeof(list[0]));
+            if (!list) {
+                closedir(dir);
+                errno = ENOMEM;
+                return (size_t)0;
+            }
+            *listptr = list;
+            *sizeptr = size;
+        }
+
+        /* Add to list. */
+        list[used++] = (pid_t)value;
+    }
+    if (errno) {
+        const int saved_errno = errno;
+        closedir(dir);
+        errno = saved_errno;
+        return (size_t)0;
+    }
+    if (closedir(dir)) {
+        errno = EIO;
+        return (size_t)0;
+    }
+
+    /* None? */
+    if (used < 1) {
+        errno = ESRCH;
+        return (size_t)0;
+    }
+
+    /* Make sure there is room for a terminating (pid_t)0. */
+    if (used >= size) {
+        size = used + 1;
+        list = (pid_t*)realloc(list, size * sizeof list[0]);
+        if (!list) {
+            errno = ENOMEM;
+            return (size_t)0;
+        }
+        *listptr = list;
+        *sizeptr = size;
+    }
+
+    /* Terminate list; done. */
+    list[used] = (pid_t)0;
+    errno = 0;
+    return used;
+}
+
 static int process_signals(pid_t child) {
     const char** sys_map = getSysMap();
     int status;
+    // int clone_flag = 0;
+    pid_t current_pid = child;
     while (1) {
-        // ptrace(PTRACE_SYSCALL, child, 0, 0);
-        ptrace(PTRACE_CONT, child, 0, 0);
-        waitpid(child, &status, 0);
+        // if (clone_flag) {
+        //     ptrace(PTRACE_SYSCALL, child, 0, 0);
+        // } else {
+        ptrace(PTRACE_CONT, current_pid, 0, 0);
+        // }
+        current_pid = waitpid(0, &status, 0);
 
         // if (status >> 16 == PTRACE_EVENT_FORK) {
         //     long newpid;
@@ -82,7 +187,11 @@ static int process_signals(pid_t child) {
         if (WIFEXITED(status)) {
             int child_status = WEXITSTATUS(status);
             printf("[Child exit with status %d]\n", child_status);
-            return child_status;
+            if (current_pid == child) {
+                return child_status;
+            } else {
+                continue;
+            }
         }
 
         // if (WIFSIGNALED(status)) {
@@ -122,19 +231,55 @@ static int process_signals(pid_t child) {
         //     printf("Child stopped due to signal %d\n", WSTOPSIG(status));
         // }
         //
+
+#if 0
+        pid_t* tid = 0;
+        size_t tids = 0;
+        size_t tids_max = 0;
+        size_t t, s;
+        long r;
+        tids = get_tids(&tid, &tids_max, child);
+        if (!tids)
+            return -1;
+
+        printf("Process %d has %d tasks,\n", (int)child, (int)tids);
+        fflush(stdout);
+
+        /* Attach to all tasks. */
+        for (t = 0; t < tids; t++) {
+            do {
+                r = ptrace(PTRACE_ATTACH, tid[t], (void*)0, (void*)0);
+            } while (r == -1L && (errno == EBUSY || errno == EFAULT || errno == ESRCH));
+            if (r == -1L) {
+                const int saved_errno = errno;
+                while (t-- > 0)
+                    do {
+                        r = ptrace(PTRACE_DETACH, tid[t], (void*)0, (void*)0);
+                    } while (r == -1L && (errno == EBUSY || errno == EFAULT || errno == ESRCH));
+                tids = 0;
+                errno = saved_errno;
+                break;
+            }
+        }
+#endif
+
         int isSECTrap = status >> 8 == (SIGTRAP | (PTRACE_EVENT_SECCOMP << 8));
+        // clone_flag = 0;
 
         if (isSECTrap) {
-            long syscall = ptrace(PTRACE_PEEKUSER, child, sizeof(long) * ORIG_RAX, 0);
+            long syscall = ptrace(PTRACE_PEEKUSER, current_pid, sizeof(long) * ORIG_RAX, 0);
             if (syscall == SYS_openat) {
                 char orig_file[PATH_MAX];
-                read_file(child, orig_file);
+                read_file(current_pid, orig_file);
                 // const char* prefix_str = "/";
                 // if (strncmp(orig_file, prefix_str, strlen(prefix_str)) != 0) {
-                printf("[Opening %s]\n", orig_file);
+                printf("[Opening %d %s]\n", current_pid, orig_file);
                 // }
+            } else if (syscall == SYS_clone) {
+                printf("[Clone%d ]\n", current_pid);
+                // clone_flag = 1;
             } else {
-                // printf("OTHER:%ld:%s\n", syscall, sys_map[syscall]);
+                printf("!!!!!OTHER:%ld:%s\n", syscall, sys_map[syscall]);
             }
         } else {
             // printf("Not isSECTrap\n");
@@ -171,6 +316,8 @@ static int runTasks(const std::string& name, const std::vector<std::string>& tas
         /* If open syscall, trace */
         struct sock_filter filter[] = {
             BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct seccomp_data, nr)),
+            BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, SYS_clone, 0, 1),
+            BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE),
             BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, SYS_openat, 0, 1),
             BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE),
             BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW),
@@ -199,8 +346,9 @@ static int runTasks(const std::string& name, const std::vector<std::string>& tas
     // orig pid
     // const char** sysMap = getSysMap();
     int status;
+    printf("Parent pid:%d\n\n", pid);
     waitpid(pid, &status, 0);
-    ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESECCOMP);
+    ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESECCOMP | PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK);
     return_status = process_signals(pid);
     printf("Done processing signals.\n");
 #else   // not USE_STRACE
