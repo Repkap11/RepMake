@@ -186,10 +186,11 @@ static int process_signals(pid_t child) {
 
         if (WIFEXITED(status)) {
             int child_status = WEXITSTATUS(status);
-            printf("[Child exit with status %d]\n", child_status);
             if (current_pid == child) {
+                printf("[Child exit with status %d]\n", child_status);
                 return child_status;
             } else {
+                printf("[Proc exit with status %d]\n", child_status);
                 continue;
             }
         }
@@ -264,20 +265,16 @@ static int process_signals(pid_t child) {
 #endif
 
         int isSECTrap = status >> 8 == (SIGTRAP | (PTRACE_EVENT_SECCOMP << 8));
-        // clone_flag = 0;
 
         if (isSECTrap) {
             long syscall = ptrace(PTRACE_PEEKUSER, current_pid, sizeof(long) * ORIG_RAX, 0);
             if (syscall == SYS_openat) {
                 char orig_file[PATH_MAX];
                 read_file(current_pid, orig_file);
-                // const char* prefix_str = "/";
-                // if (strncmp(orig_file, prefix_str, strlen(prefix_str)) != 0) {
-                printf("[Opening %d %s]\n", current_pid, orig_file);
-                // }
-            } else if (syscall == SYS_clone) {
-                printf("[Clone%d ]\n", current_pid);
-                // clone_flag = 1;
+                const char* prefix_str = "/";
+                if (strncmp(orig_file, prefix_str, strlen(prefix_str)) != 0) {
+                    printf("[Opening %d %s]\n", current_pid, orig_file);
+                }
             } else {
                 printf("!!!!!OTHER:%ld:%s\n", syscall, sys_map[syscall]);
             }
@@ -291,17 +288,17 @@ static int process_signals(pid_t child) {
 
 static int runTasks(const std::string& name, const std::vector<std::string>& tasks) {
     // TODO make all of these run in the same shell.
-    char* cmd = strdup("/usr/bin/git");
+    char* cmd = strdup("/usr/bin/bash");
     char* dash_c = strdup("-c");
 
     std::stringstream ss;
     for (const std::string& task : tasks) {
         std::cout << task << std::endl;
-        // ss << task << "\n";
-        ss << task;
+        ss << task << "\n";
+        // ss << task;
     }
     std::string comands = ss.str();
-    char* args[4] = {cmd, (char*)(comands.c_str()), NULL};
+    char* args[4] = {cmd, dash_c, (char*)(comands.c_str()), NULL};
 
     int return_status = 0;
 #if DRY_RUN
@@ -316,8 +313,6 @@ static int runTasks(const std::string& name, const std::vector<std::string>& tas
         /* If open syscall, trace */
         struct sock_filter filter[] = {
             BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct seccomp_data, nr)),
-            BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, SYS_clone, 0, 1),
-            BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE),
             BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, SYS_openat, 0, 1),
             BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE),
             BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW),
@@ -348,7 +343,7 @@ static int runTasks(const std::string& name, const std::vector<std::string>& tas
     int status;
     printf("Parent pid:%d\n\n", pid);
     waitpid(pid, &status, 0);
-    ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESECCOMP | PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK);
+    ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESECCOMP | PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK);
     return_status = process_signals(pid);
     printf("Done processing signals.\n");
 #else   // not USE_STRACE

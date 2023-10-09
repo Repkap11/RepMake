@@ -1,8 +1,5 @@
-all:
-    status
-    # cat TWO.txt
-    # git status
-    # curl www.google.com
+all: example
+    ./example
 
 example: example.o lib.o
     gcc example.o lib.o -o example
