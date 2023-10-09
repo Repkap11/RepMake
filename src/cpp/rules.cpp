@@ -1,24 +1,24 @@
 #include "rules.hpp"
 
 #include <errno.h>
+#include <fcntl.h>
+#include <linux/filter.h>
+#include <linux/limits.h>
+#include <linux/seccomp.h>
+#include <linux/unistd.h>
+#include <signal.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/prctl.h>
 #include <sys/ptrace.h>
+#include <sys/reg.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/wait.h>
-#include <unistd.h>
-
-/* POSIX */
 #include <sys/user.h>
 #include <sys/wait.h>
 #include <unistd.h>
-
-/* Linux */
-#include <sys/ptrace.h>
-#include <syscall.h>
 
 #include <iostream>
 #include <queue>
@@ -26,12 +26,97 @@
 
 #include "sys_map.hpp"
 
-#define FATAL(...)                               \
-    do {                                         \
-        fprintf(stderr, "strace: " __VA_ARGS__); \
-        fputc('\n', stderr);                     \
-        exit(EXIT_FAILURE);                      \
-    } while (0)
+static int wait_for_open(pid_t child) {
+    int status;
+
+    while (1) {
+        ptrace(PTRACE_CONT, child, 0, 0);
+        waitpid(child, &status, 0);
+        // printf("[waitpid status: 0x%08x]\n", status);
+        /* Is it our filter for the open syscall? */
+        int got = status >> 8;
+        int expected = (SIGTRAP | (PTRACE_EVENT_SECCOMP << 8));
+        long peek = ptrace(PTRACE_PEEKUSER, child, sizeof(long) * ORIG_RAX, 0);
+        if (status >> 8 == expected && peek == __NR_openat) {
+            return 0;
+        }
+        if (WIFEXITED(status)) {
+            return 1;
+        }
+    }
+}
+
+static void read_file(pid_t child, char* file) {
+    char* child_addr;
+    unsigned long i;
+
+
+    child_addr = (char*)ptrace(PTRACE_PEEKUSER, child, sizeof(long) * RSI, 0);
+
+    do {
+        long val;
+        char* p;
+
+        val = ptrace(PTRACE_PEEKTEXT, child, child_addr, NULL);
+        if (val == -1) {
+            fprintf(stderr, "PTRACE_PEEKTEXT error: %s", strerror(errno));
+            exit(1);
+        }
+        child_addr += sizeof(long);
+
+        p = (char*)&val;
+        for (i = 0; i < sizeof(long); ++i, ++file) {
+            *file = *p++;
+            if (*file == '\0') break;
+        }
+    } while (i == sizeof(long));
+}
+
+static void redirect_file(pid_t child, const char* file) {
+    char *stack_addr, *file_addr;
+
+    stack_addr = (char*)ptrace(PTRACE_PEEKUSER, child, sizeof(long) * RSP, 0);
+    /* Move further of red zone and make sure we have space for the file name */
+    stack_addr -= 128 + PATH_MAX;
+    file_addr = stack_addr;
+
+    /* Write new file in lower part of the stack */
+    do {
+        unsigned long i;
+        char val[sizeof(long)];
+
+        for (i = 0; i < sizeof(long); ++i, ++file) {
+            val[i] = *file;
+            if (*file == '\0') break;
+        }
+
+        ptrace(PTRACE_POKETEXT, child, stack_addr, *(long*)val);
+        stack_addr += sizeof(long);
+    } while (*file);
+
+    /* Change argument to open */
+    ptrace(PTRACE_POKEUSER, child, sizeof(long) * RSI, file_addr);
+}
+static void process_signals(pid_t child) {
+    const char* file_to_redirect = "ONE.txt";
+    const char* file_to_avoid = "TWO.txt";
+
+    while (1) {
+        char orig_file[PATH_MAX];
+
+        /* Wait for open syscall start */
+        if (wait_for_open(child) != 0) break;
+
+        /* Find out file and re-direct if it is the target */
+
+        read_file(child, orig_file);
+        printf("[Opening %s]\n", orig_file);
+
+        if (strcmp(file_to_avoid, orig_file) == 0){
+            redirect_file(child, file_to_redirect);
+        }
+    }
+}
 
 static int runTasks(const std::string& name, const std::vector<std::string>& tasks) {
     // TODO make all of these run in the same shell.
@@ -41,7 +126,7 @@ static int runTasks(const std::string& name, const std::vector<std::string>& tas
     std::stringstream ss;
     for (const std::string& task : tasks) {
         std::cout << task << std::endl;
-        // ss << task << "\n";
+        ss << task << "\n";
     }
     std::string comands = ss.str();
     char* args[4] = {cmd, dash_c, (char*)(comands.c_str()), NULL};
@@ -53,58 +138,41 @@ static int runTasks(const std::string& name, const std::vector<std::string>& tas
         std::cout << "Fork error" << std::endl;
     }
     if (pid == 0) {  // child pid
+        /* If open syscall, trace */
+        struct sock_filter filter[] = {
+            BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct seccomp_data, nr)),
+            BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_openat, 0, 1),
+            BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE),
+            BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW),
+        };
+        struct sock_fprog prog = {
+            .len = (unsigned short)(sizeof(filter) / sizeof(filter[0])),
+            .filter = filter,
+        };
         ptrace(PTRACE_TRACEME, 0, 0, 0);
+        /* To avoid the need for CAP_SYS_ADMIN */
+        if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1) {
+            perror("prctl(PR_SET_NO_NEW_PRIVS)");
+            return 1;
+        }
+        if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1) {
+            perror("when setting seccomp filter");
+            return 1;
+        }
+        kill(getpid(), SIGSTOP);
         execvp(args[0], args);
         exit(0);
     }
     // orig pid
     const char** sysMap = getSysMap();
-    waitpid(pid, 0, 0);  // sync with execvp
-    ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_EXITKILL);
-    for (;;) {
-        /* Enter next system call */
-        if (ptrace(PTRACE_SYSCALL, pid, 0, 0) == -1)
-            FATAL("%s", strerror(errno));
-        if (waitpid(pid, 0, 0) == -1)
-            FATAL("%s", strerror(errno));
-
-        /* Gather system call arguments */
-        struct user_regs_struct regs;
-        if (ptrace(PTRACE_GETREGS, pid, 0, &regs) == -1)
-            FATAL("%s", strerror(errno));
-        long syscall = regs.orig_rax;
-
-        /* Print a representation of the system call */
-        fprintf(stderr, "%s: %ld(%ld, %ld, %ld, %ld, %ld, %ld)",
-                sysMap[syscall], syscall,
-                (long)regs.rdi, (long)regs.rsi, (long)regs.rdx,
-                (long)regs.r10, (long)regs.r8, (long)regs.r9);
-        /* Run system call and stop on exit */
-
-        if (ptrace(PTRACE_SYSCALL, pid, 0, 0) == -1)
-            FATAL("%s", strerror(errno));
-        if (waitpid(pid, 0, 0) == -1)
-            FATAL("%s", strerror(errno));
-
-        /* Get system call result */
-        if (ptrace(PTRACE_GETREGS, pid, 0, &regs) == -1) {
-            fputs(" = ?\n", stderr);
-            if (errno == ESRCH)
-                exit(regs.rdi);  // system call was _exit(2) or similar
-            FATAL("%s", strerror(errno));
-        }
-
-        /* Print system call result */
-        fprintf(stderr, " = %ld\n", (long)regs.rax);
-        if (syscall == SYS_openat) {
-            printf("SYS_openat\n");
-        }
-    }
+    int status;
+    waitpid(pid, &status, 0);
+    ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESECCOMP);
+    process_signals(pid);
 
 #endif
     free(dash_c);
     free(cmd);
-
     return 0;
 }
 
