@@ -26,30 +26,10 @@
 
 #include "sys_map.hpp"
 
-static int wait_for_open(pid_t child) {
-    int status;
-
-    while (1) {
-        ptrace(PTRACE_CONT, child, 0, 0);
-        waitpid(child, &status, 0);
-        // printf("[waitpid status: 0x%08x]\n", status);
-        /* Is it our filter for the open syscall? */
-        int got = status >> 8;
-        int expected = (SIGTRAP | (PTRACE_EVENT_SECCOMP << 8));
-        long peek = ptrace(PTRACE_PEEKUSER, child, sizeof(long) * ORIG_RAX, 0);
-        if (status >> 8 == expected && peek == __NR_openat) {
-            return 0;
-        }
-        if (WIFEXITED(status)) {
-            return 1;
-        }
-    }
-}
-
+#if USE_PTRACE
 static void read_file(pid_t child, char* file) {
     char* child_addr;
     unsigned long i;
-
 
     child_addr = (char*)ptrace(PTRACE_PEEKUSER, child, sizeof(long) * RSI, 0);
 
@@ -72,51 +52,34 @@ static void read_file(pid_t child, char* file) {
     } while (i == sizeof(long));
 }
 
-static void redirect_file(pid_t child, const char* file) {
-    char *stack_addr, *file_addr;
-
-    stack_addr = (char*)ptrace(PTRACE_PEEKUSER, child, sizeof(long) * RSP, 0);
-    /* Move further of red zone and make sure we have space for the file name */
-    stack_addr -= 128 + PATH_MAX;
-    file_addr = stack_addr;
-
-    /* Write new file in lower part of the stack */
-    do {
-        unsigned long i;
-        char val[sizeof(long)];
-
-        for (i = 0; i < sizeof(long); ++i, ++file) {
-            val[i] = *file;
-            if (*file == '\0') break;
-        }
-
-        ptrace(PTRACE_POKETEXT, child, stack_addr, *(long*)val);
-        stack_addr += sizeof(long);
-    } while (*file);
-
-    /* Change argument to open */
-    ptrace(PTRACE_POKEUSER, child, sizeof(long) * RSI, file_addr);
-}
 static void process_signals(pid_t child) {
-    const char* file_to_redirect = "ONE.txt";
-    const char* file_to_avoid = "TWO.txt";
-
     while (1) {
         char orig_file[PATH_MAX];
-
-        /* Wait for open syscall start */
-        if (wait_for_open(child) != 0) break;
+        int status;
+        while (1) {
+            ptrace(PTRACE_CONT, child, 0, 0);
+            waitpid(child, &status, 0);
+            // printf("[waitpid status: 0x%08x]\n", status);
+            /* Is it our filter for the open syscall? */
+            int got = status >> 8;
+            int expected = (SIGTRAP | (PTRACE_EVENT_SECCOMP << 8));
+            long peek = ptrace(PTRACE_PEEKUSER, child, sizeof(long) * ORIG_RAX, 0);
+            if (status >> 8 == expected && peek == SYS_openat) {
+                break;
+            }
+            if (WIFEXITED(status)) {
+                return;
+            }
+            // Keep waiting for another open.
+        }
 
         /* Find out file and re-direct if it is the target */
 
         read_file(child, orig_file);
         printf("[Opening %s]\n", orig_file);
-
-        if (strcmp(file_to_avoid, orig_file) == 0){
-            redirect_file(child, file_to_redirect);
-        }
     }
 }
+#endif  // USE_PTRACE
 
 static int runTasks(const std::string& name, const std::vector<std::string>& tasks) {
     // TODO make all of these run in the same shell.
@@ -132,7 +95,9 @@ static int runTasks(const std::string& name, const std::vector<std::string>& tas
     char* args[4] = {cmd, dash_c, (char*)(comands.c_str()), NULL};
 
 #if DRY_RUN
-#else
+#else  // not DRY_RUN
+#if USE_PTRACE
+
     pid_t pid = fork();
     if (pid == -1) {
         std::cout << "Fork error" << std::endl;
@@ -141,7 +106,7 @@ static int runTasks(const std::string& name, const std::vector<std::string>& tas
         /* If open syscall, trace */
         struct sock_filter filter[] = {
             BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct seccomp_data, nr)),
-            BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_openat, 0, 1),
+            BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, SYS_openat, 0, 1),
             BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE),
             BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW),
         };
@@ -160,6 +125,7 @@ static int runTasks(const std::string& name, const std::vector<std::string>& tas
             return 1;
         }
         kill(getpid(), SIGSTOP);
+
         execvp(args[0], args);
         exit(0);
     }
@@ -169,8 +135,10 @@ static int runTasks(const std::string& name, const std::vector<std::string>& tas
     waitpid(pid, &status, 0);
     ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESECCOMP);
     process_signals(pid);
-
-#endif
+#else   // not USE_STRACE
+    execvp(args[0], args);
+#endif  // USE_STRACE
+#endif  // DRY_RUN
     free(dash_c);
     free(cmd);
     return 0;

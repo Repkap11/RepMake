@@ -8,6 +8,7 @@
 class Rule;
 
 #define DRY_RUN 0
+#define USE_PTRACE 1
 
 #define RELATIVE_TIME 1
 

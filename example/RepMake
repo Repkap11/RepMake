@@ -1,6 +1,5 @@
-nothing:
-    cat TWO.txt
-
+all: example
+    ./example
 example: example.o lib.o
     gcc example.o lib.o -o example
 
