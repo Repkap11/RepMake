@@ -32,9 +32,11 @@
 //  https://github.com/skeeto/ptrace-examples/blob/master/minimal_strace.c
 
 #if USE_PTRACE
-static void read_file(pid_t child, char* file) {
+static void read_file(pid_t child, char* file, long* flags) {
     char* child_addr;
     unsigned long i;
+
+    *flags = ptrace(PTRACE_PEEKUSER, child, sizeof(long) * RDX, 0);
 
     child_addr = (char*)ptrace(PTRACE_PEEKUSER, child, sizeof(long) * RSI, 0);
 
@@ -164,6 +166,54 @@ size_t get_tids(pid_t** const listptr, size_t* const sizeptr, const pid_t pid) {
     return used;
 }
 
+void flagsToString(long flags, char* result, size_t result_size) {
+    // Initialize the result string as empty
+    int length = 0;
+
+    // Check each flag and append its description to the result string
+    if (flags == O_RDONLY) {
+        length += sprintf(result + length, "O_RDONLY ");
+    }
+    if (flags & O_WRONLY) {
+        length += sprintf(result + length, "O_WRONLY ");
+    }
+    if (flags & O_RDWR) {
+        length += sprintf(result + length, "O_RDWR ");
+    }
+    if (flags & O_CREAT) {
+        length += sprintf(result + length, "O_CREAT ");
+    }
+    if (flags & O_TRUNC) {
+        length += sprintf(result + length, "O_TRUNC ");
+    }
+    if (flags & O_APPEND) {
+        length += sprintf(result + length, "O_APPEND ");
+    }
+    if (flags & O_CLOEXEC) {
+        length += sprintf(result + length, "O_CLOEXEC ");
+    }
+
+    // Add more flag checks as needed
+
+    // Remove the trailing space, if any
+    size_t len = strlen(result);
+    if (len > 0 && result[len - 1] == ' ') {
+        result[len - 1] = '\0';
+    }
+}
+
+int startsWith(const char* str, const char** prefixes) {
+    int i = 0;
+    const char* prefix = prefixes[i++];
+    while (prefix != NULL) {
+        if (strncmp(str, prefix, strlen(prefix)) == 0) {
+            return 1;  // String starts with one of the prefixes
+        }
+        prefix = prefixes[i++];
+    }
+    return 0;  // String does not start with any of the prefixes
+}
+
 static int process_signals(pid_t child) {
     const char** sys_map = getSysMap();
     int status;
@@ -187,10 +237,10 @@ static int process_signals(pid_t child) {
         if (WIFEXITED(status)) {
             int child_status = WEXITSTATUS(status);
             if (current_pid == child) {
-                printf("[Child exit with status %d]\n", child_status);
+                // printf("[Child exit with status %d]\n", child_status);
                 return child_status;
             } else {
-                printf("[Proc exit with status %d]\n", child_status);
+                // printf("[Proc exit with status %d]\n", child_status);
                 continue;
             }
         }
@@ -270,13 +320,27 @@ static int process_signals(pid_t child) {
             long syscall = ptrace(PTRACE_PEEKUSER, current_pid, sizeof(long) * ORIG_RAX, 0);
             if (syscall == SYS_openat) {
                 char orig_file[PATH_MAX];
-                read_file(current_pid, orig_file);
-                const char* prefix_str = "/";
-                if (strncmp(orig_file, prefix_str, strlen(prefix_str)) != 0) {
-                    printf("[Opening %d %s]\n", current_pid, orig_file);
+                long flags = 0;
+                char flags_str[1024];
+                read_file(current_pid, orig_file, &flags);
+
+                char resolved_path[PATH_MAX];
+                realpath(orig_file, resolved_path);
+
+                flagsToString(flags, flags_str, sizeof(flags_str));
+                const char* prefix_strs[] = {"/tmp/", "/usr/", "/etc/", "/lib/", "/dev/", NULL};
+                if (!startsWith(resolved_path, prefix_strs)) {
+                    printf("[Open (%s) %s]\n", flags_str, orig_file);
+
+                    // if ((flags & O_CREAT) || (flags & O_WRONLY)) {
+                    //     printf("[Writing (%s) %s]\n", flags_str, orig_file);
+                    // }
+                    // if ((flags == O_RDONLY) || (flags & O_RDWR)) {
+                    //     printf("[Reading (%s) %s]\n", flags_str, orig_file);
+                    // }
                 }
             } else {
-                printf("!!!!!OTHER:%ld:%s\n", syscall, sys_map[syscall]);
+                printf("Syscall OTHER:%ld:%s\n", syscall, sys_map[syscall]);
             }
         } else {
             // printf("Not isSECTrap\n");
@@ -333,7 +397,7 @@ static int runTasks(const std::string& name, const std::vector<std::string>& tas
         }
         kill(getpid(), SIGSTOP);
         execvp(args[0], args);
-        printf("Child process ending\n");
+        // printf("Child process ending\n");
         free(dash_c);
         free(cmd);
         exit(0);
@@ -341,11 +405,11 @@ static int runTasks(const std::string& name, const std::vector<std::string>& tas
     // orig pid
     // const char** sysMap = getSysMap();
     int status;
-    printf("Parent pid:%d\n\n", pid);
+    // printf("Parent pid:%d\n\n", pid);
     waitpid(pid, &status, 0);
     ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESECCOMP | PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK);
     return_status = process_signals(pid);
-    printf("Done processing signals.\n");
+    // printf("Done processing signals.\n");
 #else   // not USE_STRACE
     execvp(args[0], args);
 #endif  // USE_STRACE
