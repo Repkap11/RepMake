@@ -59,6 +59,8 @@
         "thread": "cpp",
         "cinttypes": "cpp",
         "typeinfo": "cpp",
-        "queue": "cpp"
+        "queue": "cpp",
+        "fcntl.h": "c",
+        "unistd.h": "c"
     }
 }

@@ -1,5 +1,6 @@
-all: 
+all:
     git status
+    # curl www.google.com
 
 example: example.o lib.o
     gcc example.o lib.o -o example

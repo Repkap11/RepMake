@@ -26,6 +26,10 @@
 
 #include "sys_map.hpp"
 
+// https://www.alfonsobeato.net/tag/seccomp/
+// https://github.com/alfonsosanchezbeato/ptrace-redirect/blob/master/redir_filter.c
+//  https://github.com/skeeto/ptrace-examples/blob/master/minimal_strace.c
+
 #if USE_PTRACE
 static void read_file(pid_t child, char* file) {
     char* child_addr;
@@ -52,53 +56,89 @@ static void read_file(pid_t child, char* file) {
     } while (i == sizeof(long));
 }
 
+#ifdef __x86_64__
+#define SC_NUMBER (8 * ORIG_RAX)
+#define SC_RETCODE (8 * RAX)
+#else
+#define SC_NUMBER (4 * ORIG_EAX)
+#define SC_RETCODE (4 * EAX)
+#endif
+
 static int process_signals(pid_t child) {
     const char** sys_map = getSysMap();
+    int status;
     while (1) {
-        int status;
-        while (1) {
-            ptrace(PTRACE_CONT, child, 0, 0);
-            waitpid(child, &status, 0);
+        ptrace(PTRACE_SYSCALL, child, 0, 0);
+        waitpid(child, &status, 0);
 
-            // if (status >> 16 == PTRACE_EVENT_FORK) {
-            //     long newpid;
-            //     ptrace(PTRACE_GETEVENTMSG, child, NULL, (long)&newpid);
-            //     ptrace(PTRACE_SYSCALL, newpid, NULL, NULL);
-            //     printf("Attached to offspring %ld\n", newpid);
-            // }
+        // if (status >> 16 == PTRACE_EVENT_FORK) {
+        //     long newpid;
+        //     ptrace(PTRACE_GETEVENTMSG, child, NULL, (long)&newpid);
+        //     ptrace(PTRACE_SYSCALL, newpid, NULL, NULL);
+        //     printf("Attached to offspring %ld\n", newpid);
+        // }
 
-            if (WIFEXITED(status)) {
-                int child_status = WEXITSTATUS(status);
-                printf("[Child exit with status %d]\n", child_status);
-                return child_status;
-            }
-            if (WIFSIGNALED(status)) {
-                printf("Child exit due to signal %d\n", WTERMSIG(status));
-                return -1;
-            }
-            if (!WIFSTOPPED(status)) {
-                printf("wait() returned unhandled status 0x%x\n", status);
-                return -1;
-            }
-            int isSECTrap = status >> 8 == (SIGTRAP | (PTRACE_EVENT_SECCOMP << 8));
-
-            if (isSECTrap) {
-                long syscall = ptrace(PTRACE_PEEKUSER, child, sizeof(long) * ORIG_RAX, 0);
-                if (syscall == SYS_openat) {
-                    char orig_file[PATH_MAX];
-                    read_file(child, orig_file);
-                    const char* prefix_str = "/";
-                    if (strncmp(orig_file, prefix_str, strlen(prefix_str)) != 0) {
-                        printf("[Opening %s]\n", orig_file);
-                    }
-                } else {
-                    printf("OTHER:%ld:%s\n", syscall, sys_map[syscall]);
-                }
-            } else {
-                // printf("Not isSECTrap\n");
-            }
+        if (WIFEXITED(status)) {
+            int child_status = WEXITSTATUS(status);
+            printf("[Child exit with status %d]\n", child_status);
+            return child_status;
         }
 
+
+        // if (WIFSIGNALED(status)) {
+        //     printf("Child exit due to signal %d\n", WTERMSIG(status));
+        //     return -1;
+        // }
+        // if (!WIFSTOPPED(status)) {
+        //     printf("wait() returned unhandled status 0x%x\n", status);
+        //     return -1;
+        // }
+
+        // if (WIFEXITED(status)) {
+        //     printf("Child exit with status %d\n", WEXITSTATUS(status));
+        //     exit(0);
+        // }
+        // if (WIFSIGNALED(status)) {
+        //     printf("Child exit due to signal %d\n", WTERMSIG(status));
+        //     exit(0);
+        // }
+        // if (!WIFSTOPPED(status)) {
+        //     printf("wait() returned unhandled status 0x%x\n", status);
+        //     exit(0);
+        // }
+
+        // if (WSTOPSIG(status) == SIGTRAP) {
+        //     long sc_number, sc_retcode;
+        //     /* Note that there are *three* reasons why the child might stop
+        //      * with SIGTRAP:
+        //      *  1) syscall entry
+        //      *  2) syscall exit
+        //      *  3) child calls exec
+        //      */
+        //     sc_number = ptrace(PTRACE_PEEKUSER, child, SC_NUMBER, NULL);
+        //     sc_retcode = ptrace(PTRACE_PEEKUSER, child, SC_RETCODE, NULL);
+        //     printf("SIGTRAP: syscall %ld, rc = %ld\n", sc_number, sc_retcode);
+        // } else {
+        //     printf("Child stopped due to signal %d\n", WSTOPSIG(status));
+        // }
+// 
+        int isSECTrap = status >> 8 == (SIGTRAP | (PTRACE_EVENT_SECCOMP << 8));
+
+        // if (isSECTrap) {
+            long syscall = ptrace(PTRACE_PEEKUSER, child, sizeof(long) * ORIG_RAX, 0);
+            if (syscall == SYS_openat) {
+                char orig_file[PATH_MAX];
+                read_file(child, orig_file);
+                // const char* prefix_str = "/";
+                // if (strncmp(orig_file, prefix_str, strlen(prefix_str)) != 0) {
+                    printf("[Opening %s]\n", orig_file);
+                // }
+            } else {
+                // printf("OTHER:%ld:%s\n", syscall, sys_map[syscall]);
+            }
+        // } else {
+        //     // printf("Not isSECTrap\n");
+        // }
         /* Find out file and re-direct if it is the target */
     }
 }
@@ -139,17 +179,16 @@ static int runTasks(const std::string& name, const std::vector<std::string>& tas
             .filter = filter,
         };
         ptrace(PTRACE_TRACEME, 0, 0, 0);
-        ptrace(PTRACE_SETOPTIONS, pid, NULL, PTRACE_O_TRACEFORK | PTRACE_O_TRACECLONE | PTRACE_O_TRACEVFORK);
         /* To avoid the need for CAP_SYS_ADMIN */
         if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1) {
             perror("prctl(PR_SET_NO_NEW_PRIVS)");
             return 1;
         }
-        if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1) {
-            perror("when setting seccomp filter");
-            return 1;
-        }
-        // kill(getpid(), SIGSTOP);
+        // if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1) {
+        //     perror("when setting seccomp filter");
+        //     return 1;
+        // }
+        kill(getpid(), SIGSTOP);
         execvp(args[0], args);
         printf("Child process ending\n");
         free(dash_c);
