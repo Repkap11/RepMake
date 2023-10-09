@@ -52,31 +52,54 @@ static void read_file(pid_t child, char* file) {
     } while (i == sizeof(long));
 }
 
-static void process_signals(pid_t child) {
+static int process_signals(pid_t child) {
+    const char** sys_map = getSysMap();
     while (1) {
-        char orig_file[PATH_MAX];
         int status;
         while (1) {
             ptrace(PTRACE_CONT, child, 0, 0);
             waitpid(child, &status, 0);
-            // printf("[waitpid status: 0x%08x]\n", status);
-            /* Is it our filter for the open syscall? */
-            int got = status >> 8;
-            int expected = (SIGTRAP | (PTRACE_EVENT_SECCOMP << 8));
-            long peek = ptrace(PTRACE_PEEKUSER, child, sizeof(long) * ORIG_RAX, 0);
-            if (status >> 8 == expected && peek == SYS_openat) {
-                break;
-            }
+
+            // if (status >> 16 == PTRACE_EVENT_FORK) {
+            //     long newpid;
+            //     ptrace(PTRACE_GETEVENTMSG, child, NULL, (long)&newpid);
+            //     ptrace(PTRACE_SYSCALL, newpid, NULL, NULL);
+            //     printf("Attached to offspring %ld\n", newpid);
+            // }
+
             if (WIFEXITED(status)) {
-                return;
+                int child_status = WEXITSTATUS(status);
+                printf("[Child exit with status %d]\n", child_status);
+                return child_status;
             }
-            // Keep waiting for another open.
+            if (WIFSIGNALED(status)) {
+                printf("Child exit due to signal %d\n", WTERMSIG(status));
+                return -1;
+            }
+            if (!WIFSTOPPED(status)) {
+                printf("wait() returned unhandled status 0x%x\n", status);
+                return -1;
+            }
+            int isSECTrap = status >> 8 == (SIGTRAP | (PTRACE_EVENT_SECCOMP << 8));
+
+            if (isSECTrap) {
+                long syscall = ptrace(PTRACE_PEEKUSER, child, sizeof(long) * ORIG_RAX, 0);
+                if (syscall == SYS_openat) {
+                    char orig_file[PATH_MAX];
+                    read_file(child, orig_file);
+                    const char* prefix_str = "/";
+                    if (strncmp(orig_file, prefix_str, strlen(prefix_str)) != 0) {
+                        printf("[Opening %s]\n", orig_file);
+                    }
+                } else {
+                    printf("OTHER:%ld:%s\n", syscall, sys_map[syscall]);
+                }
+            } else {
+                // printf("Not isSECTrap\n");
+            }
         }
 
         /* Find out file and re-direct if it is the target */
-
-        read_file(child, orig_file);
-        printf("[Opening %s]\n", orig_file);
     }
 }
 #endif  // USE_PTRACE
@@ -94,6 +117,7 @@ static int runTasks(const std::string& name, const std::vector<std::string>& tas
     std::string comands = ss.str();
     char* args[4] = {cmd, dash_c, (char*)(comands.c_str()), NULL};
 
+    int return_status = 0;
 #if DRY_RUN
 #else  // not DRY_RUN
 #if USE_PTRACE
@@ -115,6 +139,7 @@ static int runTasks(const std::string& name, const std::vector<std::string>& tas
             .filter = filter,
         };
         ptrace(PTRACE_TRACEME, 0, 0, 0);
+        ptrace(PTRACE_SETOPTIONS, pid, NULL, PTRACE_O_TRACEFORK | PTRACE_O_TRACECLONE | PTRACE_O_TRACEVFORK);
         /* To avoid the need for CAP_SYS_ADMIN */
         if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1) {
             perror("prctl(PR_SET_NO_NEW_PRIVS)");
@@ -124,24 +149,27 @@ static int runTasks(const std::string& name, const std::vector<std::string>& tas
             perror("when setting seccomp filter");
             return 1;
         }
-        kill(getpid(), SIGSTOP);
-
+        // kill(getpid(), SIGSTOP);
         execvp(args[0], args);
+        printf("Child process ending\n");
+        free(dash_c);
+        free(cmd);
         exit(0);
     }
     // orig pid
-    const char** sysMap = getSysMap();
+    // const char** sysMap = getSysMap();
     int status;
     waitpid(pid, &status, 0);
     ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESECCOMP);
-    process_signals(pid);
+    return_status = process_signals(pid);
+    printf("Done processing signals.\n");
 #else   // not USE_STRACE
     execvp(args[0], args);
 #endif  // USE_STRACE
 #endif  // DRY_RUN
     free(dash_c);
     free(cmd);
-    return 0;
+    return return_status;
 }
 
 static REPMAKE_TIME getFileTimestamp(REPMAKE_TIME start_time, std::string fileName) {

@@ -2,7 +2,7 @@
 #include <syscall.h>
 
 const char** getSysMap() {
-    const char** syscalls = new const char*[300];
+    const char** syscalls = new const char*[500];
 
     syscalls[288] = "accept4";
     syscalls[43] = "accept";

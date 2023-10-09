@@ -1,5 +1,6 @@
-all: example
-    ./example
+all: 
+    git status
+
 example: example.o lib.o
     gcc example.o lib.o -o example
 
