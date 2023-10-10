@@ -5,6 +5,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "limits.h"
+
 class Rule;
 
 #define RELATIVE_TIME 0
@@ -25,7 +27,10 @@ class Rule {
     Rule(std::string name, std::unordered_set<std::string> deps_str, std::vector<std::string> tasks)  //
         : name(name),
           deps_str(deps_str),
-          tasks(tasks) {}
+          tasks(tasks) {
+        realpath(name.c_str(), resolved_name);
+        int fish = 2;
+    }
 
     bool operator==(const Rule& otherRule) const {
         return this->name == otherRule.name;
@@ -36,6 +41,7 @@ class Rule {
             return std::hash<std::string>()(rule.name);
         }
     };
+    char resolved_name[PATH_MAX];
     bool hasBeenRun = false;
     bool hasBeenAddedToTasks = false;
     std::string name;
@@ -48,5 +54,6 @@ class Rule {
     REPMAKE_TIME self_modified_timestamp;
     REPMAKE_TIME deps_modified_timestamp;
     std::unordered_set<Rule*> tasks_blocked_on_me;
+    pid_t blocked_work;
     static void runTasksInOrder(const std::unordered_set<std::string>& targets_to_run, std::unordered_map<std::string, Rule>& rules);
 };

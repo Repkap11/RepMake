@@ -51,7 +51,7 @@ static void read_file(pid_t pid, long reg, char* file) {
     } while (i == sizeof(long));
 }
 
-static int parent(pid_t child) {
+static int parent(std::unordered_map<std::string, Rule>& rules, pid_t child) {
     int status;
     waitpid(child, &status, 0);
     ptrace(PTRACE_SETOPTIONS, child, 0, PTRACE_O_TRACESECCOMP | PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK);
@@ -124,8 +124,20 @@ static int parent(pid_t child) {
             // The file exists, great.
             continue;
         }
+        Rule* matching_rule = NULL;
+        for (auto& it : rules) {
+            Rule& rule = it.second;
+            if (strcmp(rule.resolved_name, resolved_path) == 0) {
+                matching_rule = &rule;
+                break;
+            }
+        }
+        if (matching_rule == NULL) {
+            // This file isn't one of our rules, just let the open fail.
+            continue;
+        }
 
-        printf("[Can't open: %s]\n", orig_file);
+        printf("[Our rule is missing: %s]\n", matching_rule->name.c_str());
 
         // ptrace(PTRACE_SYSCALL, current_pid, 0, 0);  // do the syscall
         // current_pid = waitpid(0, &status, 0);
@@ -142,11 +154,13 @@ static int parent(pid_t child) {
     }
 }
 
-static int child(char** args) {
+static void child(char** args) {
     /* If open syscall, trace */
     struct sock_filter filter[] = {
         BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct seccomp_data, nr)),
         BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, SYS_openat, 0, 1),
+        BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE),
+        BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, SYS_execve, 0, 1),
         BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE),
         BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW),
     };
@@ -158,15 +172,14 @@ static int child(char** args) {
     /* To avoid the need for CAP_SYS_ADMIN */
     if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0) {
         perror("prctl(PR_SET_NO_NEW_PRIVS)");
-        return 1;
+        return;
     }
     if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) < 0) {
         perror("when setting seccomp filter");
-        return 1;
+        return;
     }
     kill(getpid(), SIGSTOP);
     execvp(args[0], args);
-    exit(0);
 }
 
 int trace_tasks(std::unordered_map<std::string, Rule>& rules, char** args) {
@@ -174,9 +187,9 @@ int trace_tasks(std::unordered_map<std::string, Rule>& rules, char** args) {
     if (pid == -1) {
         std::cout << "Fork error" << std::endl;
     }
-    if (pid == 0) {          // child pid
-        return child(args);  // Never returns;
-    } else {
-        return parent(pid);
+    if (pid == 0) {
+        child(args);
+        exit(0);
     }
+    return parent(rules, pid);
 }

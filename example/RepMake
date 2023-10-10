@@ -1,11 +1,18 @@
-all:
-    ./example
+all: dep1.o
+    cat dep1.o
+    cat dep2.o
     
-example:
-    gcc example.o lib.o -o example
+dep1.o:
+    touch dep1.o
 
-example.o:
-    gcc -c example.c -o example.o
+dep2.o:
+    touch dep2.o
 
-lib.o:
-    gcc -c lib.c -o lib.o
+# example:
+#     gcc example.o lib.o -o example
+
+# example.o:
+#     gcc -c example.c -o example.o
+
+# lib.o:
+#     gcc -c lib.c -o lib.o
