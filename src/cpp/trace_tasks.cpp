@@ -52,9 +52,8 @@ static void read_file(pid_t pid, long reg, char* file) {
     } while (i == sizeof(long));
 }
 
-static int parent(std::queue<Rule*>& tasksToRun, std::unordered_map<std::string, Rule>& rules, Rule* rule, pid_t child, int* didFinish) {
+static int parent(std::queue<Rule*>& tasksToRun, std::unordered_map<std::string, Rule>& rules, Rule* rule, pid_t child, pid_t current_pid, int* didFinish) {
     int status;
-    pid_t current_pid = child;
     while (1) {
         ptrace(PTRACE_CONT, current_pid, 0, 0);
 
@@ -135,16 +134,21 @@ static int parent(std::queue<Rule*>& tasksToRun, std::unordered_map<std::string,
             // This file isn't one of our rules, just let the open fail.
             continue;
         }
+        if (strcmp(matching_rule->name.c_str(), "dep2.o") == 0) {
+            std::cout << "";
+        }
 
         printf("[Our rule is missing: %s]\n", matching_rule->name.c_str());
 
-        if (!matching_rule->hasBeenAddedToTasks) {
-            matching_rule->hasBeenAddedToTasks = true;
-            tasksToRun.push(matching_rule);
-            std::cout << "Adding task: Num left:" << tasksToRun.size() << std::endl;
-        }
+        matching_rule->hasBeenAddedToTasks = true;
+        tasksToRun.push(matching_rule);
+        std::cout << "Adding task: Num left:" << tasksToRun.size() << std::endl;
+
         matching_rule->triggers.insert(rule);
-        rule->num_triggs_left += 1;
+        rule->dep_rules.insert(matching_rule);
+        rule->dep_files.insert(matching_rule->name);
+        // rule->num_triggs_left += 1;
+        rule->blocked_child = child;
         rule->blocked_work = current_pid;
         *didFinish = false;
         return 0;
@@ -181,6 +185,7 @@ static void child(char** args) {
 
 int trace_tasks(std::queue<Rule*>& tasksToRun, std::unordered_map<std::string, Rule>& rules, Rule* rule, char** args, int* didFinish) {
     if (rule->blocked_work != 0) {
+        pid_t child = rule->blocked_child;
         pid_t current_pid = rule->blocked_work;
         ptrace(PTRACE_SYSCALL, current_pid, 0, 0);  // do the syscall
         int status;
@@ -195,8 +200,8 @@ int trace_tasks(std::queue<Rule*>& tasksToRun, std::unordered_map<std::string, R
         }
         long syscall_ret = regs.rax;
         bool openAtSuccess = syscall_ret >= 0;
-        printf("[Resuming work:%s]\n", rule->name.c_str());
-        return parent(tasksToRun, rules, rule, current_pid, didFinish);
+        printf("[Resuming work:%s fd:%ld]\n", rule->name.c_str(), syscall_ret);
+        return parent(tasksToRun, rules, rule, child, current_pid, didFinish);
     }
     pid_t pid = fork();
     if (pid == -1) {
@@ -209,5 +214,5 @@ int trace_tasks(std::queue<Rule*>& tasksToRun, std::unordered_map<std::string, R
     int status;
     waitpid(pid, &status, 0);
     ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESECCOMP | PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK);
-    return parent(tasksToRun, rules, rule, pid, didFinish);
+    return parent(tasksToRun, rules, rule, pid, pid, didFinish);
 }

@@ -103,7 +103,7 @@ void Rule::runTasksInOrder(const std::unordered_set<std::string>& targets_to_run
         std::queue<Rule*> runnableRules;
         for (auto it = rules.begin(); it != rules.end(); it++) {
             Rule* rule = &it->second;
-            if (rule->isFinished){
+            if (rule->isFinished) {
                 continue;
             }
             if (!rule->hasBeenAddedToTasks) {
@@ -111,7 +111,7 @@ void Rule::runTasksInOrder(const std::unordered_set<std::string>& targets_to_run
             }
             int numDepsToRun = 0;
             for (Rule* dep : rule->dep_rules) {
-                if (dep->hasBeenAddedToTasks) {
+                if (dep->hasBeenAddedToTasks && !dep->isFinished) {
                     numDepsToRun++;
                 }
             }
@@ -188,5 +188,7 @@ void Rule::runTasksInOrder(const std::unordered_set<std::string>& targets_to_run
             std::cout << "  " << name << std::endl;
         }
     }
+    std::cout << "Finishing" << std::endl;
+
     return;
 }

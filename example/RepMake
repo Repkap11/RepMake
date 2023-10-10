@@ -1,12 +1,14 @@
-all: dep1.o
+all:
     cat dep1.o
+    echo Done with 1
     cat dep2.o
+    echo Done with 2
     
 dep1.o:
-    touch dep1.o
+    echo "DEP1" > dep1.o
 
 dep2.o:
-    touch dep2.o
+    echo "DEP2" > dep2.o
 
 # example:
 #     gcc example.o lib.o -o example

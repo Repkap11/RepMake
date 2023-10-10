@@ -54,6 +54,7 @@ class Rule {
     REPMAKE_TIME self_modified_timestamp;
     REPMAKE_TIME deps_modified_timestamp;
     std::unordered_set<Rule*> tasks_blocked_on_me;
+    pid_t blocked_child;
     pid_t blocked_work;
     bool isFinished = false;
     static void runTasksInOrder(const std::unordered_set<std::string>& targets_to_run, std::unordered_map<std::string, Rule>& rules);
