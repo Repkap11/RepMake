@@ -1,6 +1,6 @@
 all: example
     cat fish.txt
-    # ./example
+    ./example
     
 example: example.o lib.o
     gcc example.o lib.o -o example

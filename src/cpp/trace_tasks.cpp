@@ -24,20 +24,17 @@
 // https://github.com/alfonsosanchezbeato/ptrace-redirect/blob/master/redir_filter.c
 //  https://github.com/skeeto/ptrace-examples/blob/master/minimal_strace.c
 // register order https://stackoverflow.com/questions/2535989/what-are-the-calling-conventions-for-unix-linux-system-calls-and-user-space-f
-static void read_file(pid_t child, long* dirfd, char* file, long* flags) {
+static void read_file(pid_t pid, long rsi, char* file) {
     char* child_addr;
     unsigned long i;
 
-    *dirfd = ptrace(PTRACE_PEEKUSER, child, sizeof(long) * RDI, 0);
-    *flags = ptrace(PTRACE_PEEKUSER, child, sizeof(long) * RDX, 0);
-
-    child_addr = (char*)ptrace(PTRACE_PEEKUSER, child, sizeof(long) * RSI, 0);
+    child_addr = (char*)rsi;
 
     do {
         long val;
         char* p;
 
-        val = ptrace(PTRACE_PEEKTEXT, child, child_addr, NULL);
+        val = ptrace(PTRACE_PEEKTEXT, pid, child_addr, NULL);
         if (val == -1) {
             fprintf(stderr, "PTRACE_PEEKTEXT error: %s", strerror(errno));
             exit(1);
@@ -122,26 +119,34 @@ static int process_signals(pid_t child) {
         int isSECTrap = status >> 8 == (SIGTRAP | (PTRACE_EVENT_SECCOMP << 8));
 
         if (isSECTrap) {
-            long syscall = ptrace(PTRACE_PEEKUSER, current_pid, sizeof(long) * ORIG_RAX, 0);
+            struct user_regs_struct regs;
+            if (ptrace(PTRACE_GETREGS, current_pid, 0, &regs) == -1) {
+                if (errno == ESRCH) {
+                    printf("Child is exiting:%d: %s\n", errno, strerror(errno));
+                } else {
+                    printf("Get Regs Error %d: %s\n", errno, strerror(errno));
+                }
+            }
+            long syscall = regs.orig_rax;
             if (syscall == SYS_openat) {
                 char orig_file[PATH_MAX];
-                long flags = 0;
-                long dirfd = 0;
-                read_file(current_pid, &dirfd, orig_file, &flags);
+                long dirfd = regs.rdi;
+                long flags = regs.rdx;
+                read_file(current_pid, regs.rsi, orig_file);
 
-                ptrace(PTRACE_SYSCALL, current_pid, 0, 0);  // do the syscall.=
+                ptrace(PTRACE_SYSCALL, current_pid, 0, 0);  // do the syscall
                 current_pid = waitpid(0, &status, 0);
 
-                struct user_regs_struct regs;
                 if (ptrace(PTRACE_GETREGS, current_pid, 0, &regs) == -1) {
                     if (errno == ESRCH) {
-                        printf("Child is exiting:%d: %s\n", errno, strerror(errno));
+                        printf("Child is exiting2:%d: %s\n", errno, strerror(errno));
                     } else {
-                        printf("Get Regs Error %d: %s\n", errno, strerror(errno));
+                        printf("Get Regs Error2 %d: %s\n", errno, strerror(errno));
                     }
                 }
 
                 long syscall_ret = regs.rax;
+                bool openAtSuccess = syscall_ret >= 0;
                 char flags_str[1024];
                 // char resolved_path[PATH_MAX];
                 // realpath(orig_file, resolved_path);
@@ -149,7 +154,7 @@ static int process_signals(pid_t child) {
                 flagsToString(flags, flags_str, sizeof(flags_str));
                 bool isRelativeFile = (int)dirfd == AT_FDCWD;
                 const char* prefix_strs[] = {"/tmp/", "/usr/", "/etc/", "/lib/", "/dev/", NULL};
-                if (!startsWith(orig_file, prefix_strs)) {
+                if (openAtSuccess && !startsWith(orig_file, prefix_strs)) {
                     // if (!isRelativeFile) {
                     printf("[Open %d: (%s) %s] = %ld\n", isRelativeFile, flags_str, orig_file, syscall_ret);
                 }
