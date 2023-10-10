@@ -30,12 +30,13 @@
 // https://www.alfonsobeato.net/tag/seccomp/
 // https://github.com/alfonsosanchezbeato/ptrace-redirect/blob/master/redir_filter.c
 //  https://github.com/skeeto/ptrace-examples/blob/master/minimal_strace.c
-
+// register order https://stackoverflow.com/questions/2535989/what-are-the-calling-conventions-for-unix-linux-system-calls-and-user-space-f
 #if USE_PTRACE
-static void read_file(pid_t child, char* file, long* flags) {
+static void read_file(pid_t child, long* dirfd, char* file, long* flags) {
     char* child_addr;
     unsigned long i;
 
+    *dirfd = ptrace(PTRACE_PEEKUSER, child, sizeof(long) * RDI, 0);
     *flags = ptrace(PTRACE_PEEKUSER, child, sizeof(long) * RDX, 0);
 
     child_addr = (char*)ptrace(PTRACE_PEEKUSER, child, sizeof(long) * RSI, 0);
@@ -321,24 +322,27 @@ static int process_signals(pid_t child) {
             if (syscall == SYS_openat) {
                 char orig_file[PATH_MAX];
                 long flags = 0;
+                long dirfd = 0;
+                read_file(current_pid, &dirfd, orig_file, &flags);
                 char flags_str[1024];
-                read_file(current_pid, orig_file, &flags);
-
                 char resolved_path[PATH_MAX];
                 realpath(orig_file, resolved_path);
 
                 flagsToString(flags, flags_str, sizeof(flags_str));
+                bool isRelativeFile = (int)dirfd == AT_FDCWD;
                 const char* prefix_strs[] = {"/tmp/", "/usr/", "/etc/", "/lib/", "/dev/", NULL};
                 if (!startsWith(resolved_path, prefix_strs)) {
-                    printf("[Open (%s) %s]\n", flags_str, orig_file);
-
-                    // if ((flags & O_CREAT) || (flags & O_WRONLY)) {
-                    //     printf("[Writing (%s) %s]\n", flags_str, orig_file);
-                    // }
-                    // if ((flags == O_RDONLY) || (flags & O_RDWR)) {
-                    //     printf("[Reading (%s) %s]\n", flags_str, orig_file);
-                    // }
+                    // if (!isRelativeFile) {
+                    printf("[Open %d: (%s) %s]\n", isRelativeFile, flags_str, resolved_path);
                 }
+
+                // if ((flags & O_CREAT) || (flags & O_WRONLY)) {
+                //     printf("[Writing (%s) %s]\n", flags_str, orig_file);
+                // }
+                // if ((flags == O_RDONLY) || (flags & O_RDWR)) {
+                //     printf("[Reading (%s) %s]\n", flags_str, orig_file);
+                // }
+                // }
             } else {
                 printf("Syscall OTHER:%ld:%s\n", syscall, sys_map[syscall]);
             }
