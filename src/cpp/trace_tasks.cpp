@@ -23,6 +23,8 @@
 
 #include "utils.hpp"
 
+#define VERBOSE_DEBUG 0
+
 // https://www.alfonsobeato.net/tag/seccomp/
 // https://github.com/alfonsosanchezbeato/ptrace-redirect/blob/master/redir_filter.c
 //  https://github.com/skeeto/ptrace-examples/blob/master/minimal_strace.c
@@ -136,15 +138,13 @@ static int parent(std::queue<Rule*>& tasksToRun, std::unordered_map<std::string,
             // This file isn't one of our rules, just let the open fail.
             continue;
         }
-        if (strcmp(matching_rule->name.c_str(), "dep2.o") == 0) {
-            std::cout << "";
-        }
 
-        printf("[Our rule is missing: %s]\n", matching_rule->name.c_str());
+        if (VERBOSE_DEBUG) {
+            printf("[Our rule is missing: %s]\n", matching_rule->name.c_str());
+        }
 
         matching_rule->hasBeenAddedToTasks = true;
         tasksToRun.push(matching_rule);
-        std::cout << "Adding task: Num left:" << tasksToRun.size() << std::endl;
 
         matching_rule->triggers.insert(rule);
         rule->dep_rules.insert(matching_rule);
@@ -204,7 +204,9 @@ int trace_tasks(std::queue<Rule*>& tasksToRun, std::unordered_map<std::string, R
         }
         long syscall_ret = regs.rax;
         bool openAtSuccess = syscall_ret >= 0;
-        printf("[Resuming work:%s fd:%ld]\n", rule->name.c_str(), syscall_ret);
+        if (VERBOSE_DEBUG) {
+            printf("[Resuming work:%s fd:%ld]\n", rule->name.c_str(), syscall_ret);
+        }
         return parent(tasksToRun, rules, rule, child, current_pid, didFinish);
     }
     pid_t pid = fork();

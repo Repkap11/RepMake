@@ -10,7 +10,9 @@
 # dep2.o:
 #     echo "DEP2" > dep2.o
 
-all:
+all: build
+
+build:
     ./example
 
 example:

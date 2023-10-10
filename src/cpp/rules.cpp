@@ -166,7 +166,6 @@ void Rule::runTasksInOrder(const std::unordered_set<std::string>& targets_to_run
                 }
             }
         }
-        std::cout << "";
     }
     if (!did_any_task) {
         std::cout << "Nothing to be done for: [";
@@ -188,7 +187,6 @@ void Rule::runTasksInOrder(const std::unordered_set<std::string>& targets_to_run
             std::cout << "  " << name << std::endl;
         }
     }
-    std::cout << "Finishing" << std::endl;
 
     return;
 }
