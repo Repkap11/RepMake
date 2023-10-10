@@ -20,6 +20,8 @@
 
 #include <iostream>
 
+#include "utils.hpp"
+
 // https://www.alfonsobeato.net/tag/seccomp/
 // https://github.com/alfonsosanchezbeato/ptrace-redirect/blob/master/redir_filter.c
 //  https://github.com/skeeto/ptrace-examples/blob/master/minimal_strace.c
@@ -47,54 +49,6 @@ static void read_file(pid_t pid, long rsi, char* file) {
             if (*file == '\0') break;
         }
     } while (i == sizeof(long));
-}
-
-void flagsToString(long flags, char* result, size_t result_size) {
-    // Initialize the result string as empty
-    int length = 0;
-
-    // Check each flag and append its description to the result string
-    if (flags == O_RDONLY) {
-        length += sprintf(result + length, "O_RDONLY ");
-    }
-    if (flags & O_WRONLY) {
-        length += sprintf(result + length, "O_WRONLY ");
-    }
-    if (flags & O_RDWR) {
-        length += sprintf(result + length, "O_RDWR ");
-    }
-    if (flags & O_CREAT) {
-        length += sprintf(result + length, "O_CREAT ");
-    }
-    if (flags & O_TRUNC) {
-        length += sprintf(result + length, "O_TRUNC ");
-    }
-    if (flags & O_APPEND) {
-        length += sprintf(result + length, "O_APPEND ");
-    }
-    if (flags & O_CLOEXEC) {
-        length += sprintf(result + length, "O_CLOEXEC ");
-    }
-
-    // Add more flag checks as needed
-
-    // Remove the trailing space, if any
-    size_t len = strlen(result);
-    if (len > 0 && result[len - 1] == ' ') {
-        result[len - 1] = '\0';
-    }
-}
-
-int startsWith(const char* str, const char** prefixes) {
-    int i = 0;
-    const char* prefix = prefixes[i++];
-    while (prefix != NULL) {
-        if (strncmp(str, prefix, strlen(prefix)) == 0) {
-            return 1;  // String starts with one of the prefixes
-        }
-        prefix = prefixes[i++];
-    }
-    return 0;  // String does not start with any of the prefixes
 }
 
 static int process_signals(pid_t child) {
@@ -130,10 +84,9 @@ static int process_signals(pid_t child) {
         }
         long syscall = regs.orig_rax;
         char orig_file[PATH_MAX];
-        // if (syscall == SYS_execve) {
-        //     read_file(current_pid, regs.rdi, orig_file);
-        // }
-        if (syscall == SYS_openat) {
+        if (syscall == SYS_execve) {
+            read_file(current_pid, regs.rdi, orig_file);
+        } else if (syscall == SYS_openat) {
             long dirfd = regs.rdi;
             long flags = regs.rdx;
             bool isRelativeFile = (int)dirfd == AT_FDCWD;
@@ -149,7 +102,7 @@ static int process_signals(pid_t child) {
             }
             read_file(current_pid, regs.rsi, orig_file);
         } else {
-            //Some other syscall, we don't care.
+            // Some other syscall, we don't care.
             continue;
         }
 

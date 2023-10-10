@@ -1,5 +1,5 @@
 all:
-    cat example
+    ./example
     
 example:
     gcc example.o lib.o -o example
