@@ -12,8 +12,9 @@
 #include <string.h>
 #include <sys/prctl.h>
 #include <sys/ptrace.h>
-#include <sys/syscall.h>
 #include <sys/reg.h>
+#include <sys/syscall.h>
+#include <sys/user.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -127,16 +128,30 @@ static int process_signals(pid_t child) {
                 long flags = 0;
                 long dirfd = 0;
                 read_file(current_pid, &dirfd, orig_file, &flags);
+
+                ptrace(PTRACE_SYSCALL, current_pid, 0, 0);  // do the syscall.=
+                current_pid = waitpid(0, &status, 0);
+
+                struct user_regs_struct regs;
+                if (ptrace(PTRACE_GETREGS, current_pid, 0, &regs) == -1) {
+                    if (errno == ESRCH) {
+                        printf("Child is exiting:%d: %s\n", errno, strerror(errno));
+                    } else {
+                        printf("Get Regs Error %d: %s\n", errno, strerror(errno));
+                    }
+                }
+
+                long syscall_ret = regs.rax;
                 char flags_str[1024];
-                char resolved_path[PATH_MAX];
-                realpath(orig_file, resolved_path);
+                // char resolved_path[PATH_MAX];
+                // realpath(orig_file, resolved_path);
 
                 flagsToString(flags, flags_str, sizeof(flags_str));
                 bool isRelativeFile = (int)dirfd == AT_FDCWD;
                 const char* prefix_strs[] = {"/tmp/", "/usr/", "/etc/", "/lib/", "/dev/", NULL};
-                if (!startsWith(resolved_path, prefix_strs)) {
+                if (!startsWith(orig_file, prefix_strs)) {
                     // if (!isRelativeFile) {
-                    printf("[Open %d: (%s) %s]\n", isRelativeFile, flags_str, resolved_path);
+                    printf("[Open %d: (%s) %s] = %ld\n", isRelativeFile, flags_str, orig_file, syscall_ret);
                 }
 
                 // if ((flags & O_CREAT) || (flags & O_WRONLY)) {
