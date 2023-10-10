@@ -85,7 +85,9 @@ static int parent(std::queue<Rule*>& tasksToRun, std::unordered_map<std::string,
         }
         long syscall = regs.orig_rax;
         char orig_file[PATH_MAX];
-        if (syscall == SYS_execve) {
+        if (syscall == SYS_access) {
+            read_file(current_pid, regs.rdi, orig_file);
+        } else if (syscall == SYS_execve) {
             read_file(current_pid, regs.rdi, orig_file);
         } else if (syscall == SYS_openat) {
             long dirfd = regs.rdi;
@@ -160,6 +162,8 @@ static void child(char** args) {
     struct sock_filter filter[] = {
         BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct seccomp_data, nr)),
         BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, SYS_openat, 0, 1),
+        BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE),
+        BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, SYS_access, 0, 1),
         BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE),
         BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, SYS_execve, 0, 1),
         BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE),

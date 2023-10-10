@@ -1,20 +1,23 @@
-all:
-    cat dep1.o
-    echo Done with 1
-    cat dep2.o
-    echo Done with 2
+# all:
+#     cat dep1.o
+#     echo Done with 1
+#     cat dep2.o
+#     echo Done with 2
     
-dep1.o:
-    echo "DEP1" > dep1.o
+# dep1.o:
+#     echo "DEP1" > dep1.o
 
-dep2.o:
-    echo "DEP2" > dep2.o
+# dep2.o:
+#     echo "DEP2" > dep2.o
 
-# example:
-#     gcc example.o lib.o -o example
+all:
+    ./example
 
-# example.o:
-#     gcc -c example.c -o example.o
+example:
+    gcc example.o lib.o -o example
 
-# lib.o:
-#     gcc -c lib.c -o lib.o
+example.o:
+    gcc -c example.c -o example.o
+
+lib.o:
+    gcc -c lib.c -o lib.o
