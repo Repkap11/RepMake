@@ -8,25 +8,28 @@
 
 #include "trace_tasks.hpp"
 
-static int runTasks(std::unordered_map<std::string, Rule>& rules, const std::string& name, const std::vector<std::string>& tasks) {
+static void runTasks(std::queue<Rule*>& tasksToRun,                 //
+                     std::unordered_map<std::string, Rule>& rules,  //
+                     Rule* rule,                                    //
+                     const std::vector<std::string>& tasks,
+                     int* ret, int* didFinish) {
     // TODO make all of these run in the same shell.
     char* cmd = strdup("/usr/bin/bash");
     char* dash_c = strdup("-c");
+    char* dash_x = strdup("-x");
 
     std::stringstream ss;
     for (const std::string& task : tasks) {
-        std::cout << task << std::endl;
         ss << task << "\n";
-        // ss << task;
     }
     std::string comands = ss.str();
-    char* args[4] = {cmd, dash_c, (char*)(comands.c_str()), NULL};
+    char* args[5] = {cmd, dash_x, dash_c, (char*)(comands.c_str()), NULL};
 
-    int return_status = trace_tasks(rules, args);
+    *ret = trace_tasks(tasksToRun, rules, rule, args, didFinish);
 
     free(dash_c);
+    free(dash_x);
     free(cmd);
-    return return_status;
 }
 
 static REPMAKE_TIME getFileTimestamp(REPMAKE_TIME start_time, std::string fileName) {
@@ -82,72 +85,88 @@ void Rule::runTasksInOrder(const std::unordered_set<std::string>& targets_to_run
         rule->deps_modified_timestamp = timestamp;
     }
 
+    bool did_any_task = false;
     // Add all the dependent rules of the requested rules to the tasksToRun queue.
     while (!tasksToRun.empty()) {
-        Rule* rule = tasksToRun.front();
-        tasksToRun.pop();
-        for (Rule* dep : rule->dep_rules) {
-            if (!dep->hasBeenAddedToTasks) {
-                dep->hasBeenAddedToTasks = true;
-                tasksToRun.push(dep);
-            }
-        }
-    }
-
-    // Go through all the rules, and mark as runnable the ones that: 1: We want to run, and 2:Have no dependencies
-    std::queue<const Rule*> runnableRules;
-    for (auto it = rules.begin(); it != rules.end(); it++) {
-        Rule* rule = &it->second;
-        if (!rule->hasBeenAddedToTasks) {
-            continue;
-        }
-        int numDepsToRun = 0;
-        for (Rule* dep : rule->dep_rules) {
-            if (dep->hasBeenAddedToTasks) {
-                numDepsToRun++;
-            }
-        }
-        rule->num_triggs_left = numDepsToRun;
-        if (rule->num_triggs_left == 0) {
-            runnableRules.push(rule);
-        }
-    }
-    bool did_any_task = false;
-    // Go through the runnable rules and run them, queueing any dependent rule which can now also be run.
-    while (!runnableRules.empty()) {
-        const Rule* rule = runnableRules.front();
-        runnableRules.pop();
-
-        REPMAKE_TIME self_modified_timestamp = rule->self_modified_timestamp;
-        REPMAKE_TIME deps_modified_timestamp = rule->deps_modified_timestamp;
-        if (self_modified_timestamp < deps_modified_timestamp) {
-            const std::vector<std::string>& tasks = rule->tasks;
-            if (tasks.size() != 0) {
-                did_any_task = true;
-                int ret = runTasks(rules, rule->name, tasks);
-                if (ret) {
-                    return;
+        while (!tasksToRun.empty()) {
+            Rule* rule = tasksToRun.front();
+            tasksToRun.pop();
+            for (Rule* dep : rule->dep_rules) {
+                if (!dep->hasBeenAddedToTasks) {
+                    dep->hasBeenAddedToTasks = true;
+                    tasksToRun.push(dep);
                 }
             }
-#if RELATIVE_TIME
-            self_modified_timestamp = 0;
-#else
-            self_modified_timestamp = cur_time;
-#endif
         }
 
-        // }
-        // for (const auto& it : rules) {}
-        for (auto trigger : rule->triggers) {
-            trigger->num_triggs_left -= 1;
-            REPMAKE_TIME trig_deps_modified_timestamp = trigger->deps_modified_timestamp;
-            if (trig_deps_modified_timestamp < self_modified_timestamp) {
-                trigger->deps_modified_timestamp = self_modified_timestamp;
+        // Go through all the rules, and mark as runnable the ones that: 1: We want to run, and 2:Have no dependencies
+        std::queue<Rule*> runnableRules;
+        for (auto it = rules.begin(); it != rules.end(); it++) {
+            Rule* rule = &it->second;
+            if (rule->isFinished){
+                continue;
             }
-            if (trigger->hasBeenAddedToTasks && trigger->num_triggs_left == 0) {
-                runnableRules.push(trigger);
+            if (!rule->hasBeenAddedToTasks) {
+                continue;
+            }
+            int numDepsToRun = 0;
+            for (Rule* dep : rule->dep_rules) {
+                if (dep->hasBeenAddedToTasks) {
+                    numDepsToRun++;
+                }
+            }
+            rule->num_triggs_left = numDepsToRun;
+            if (rule->num_triggs_left == 0) {
+                runnableRules.push(rule);
             }
         }
+        // Go through the runnable rules and run them, queueing any dependent rule which can now also be run.
+        while (!runnableRules.empty()) {
+            Rule* rule = runnableRules.front();
+            runnableRules.pop();
+
+            if (rule->num_triggs_left != 0) {
+                continue;
+            }
+
+            REPMAKE_TIME self_modified_timestamp = rule->self_modified_timestamp;
+            REPMAKE_TIME deps_modified_timestamp = rule->deps_modified_timestamp;
+            int didFinish = false;
+            if (self_modified_timestamp < deps_modified_timestamp) {
+                const std::vector<std::string>& tasks = rule->tasks;
+                if (tasks.size() != 0) {
+                    did_any_task = true;
+                    int ret;
+                    runTasks(tasksToRun, rules, rule, tasks, &ret, &didFinish);
+                    if (ret) {
+                        return;
+                    }
+                }
+#if RELATIVE_TIME
+                self_modified_timestamp = 0;
+#else
+                self_modified_timestamp = cur_time;
+#endif
+            }
+
+            // }
+            // for (const auto& it : rules) {}
+            if (!didFinish) {
+                continue;
+            }
+            rule->isFinished = true;
+            for (auto trigger : rule->triggers) {
+                trigger->num_triggs_left -= 1;
+                REPMAKE_TIME trig_deps_modified_timestamp = trigger->deps_modified_timestamp;
+                if (trig_deps_modified_timestamp < self_modified_timestamp) {
+                    trigger->deps_modified_timestamp = self_modified_timestamp;
+                }
+                if (trigger->hasBeenAddedToTasks && trigger->num_triggs_left == 0) {
+                    runnableRules.push(trigger);
+                }
+            }
+        }
+        std::cout << "";
     }
     if (!did_any_task) {
         std::cout << "Nothing to be done for: [";

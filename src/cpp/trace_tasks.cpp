@@ -19,6 +19,7 @@
 #include <unistd.h>
 
 #include <iostream>
+#include <queue>
 
 #include "utils.hpp"
 
@@ -51,11 +52,8 @@ static void read_file(pid_t pid, long reg, char* file) {
     } while (i == sizeof(long));
 }
 
-static int parent(std::unordered_map<std::string, Rule>& rules, pid_t child) {
+static int parent(std::queue<Rule*>& tasksToRun, std::unordered_map<std::string, Rule>& rules, Rule* rule, pid_t child, int* didFinish) {
     int status;
-    waitpid(child, &status, 0);
-    ptrace(PTRACE_SETOPTIONS, child, 0, PTRACE_O_TRACESECCOMP | PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK);
-
     pid_t current_pid = child;
     while (1) {
         ptrace(PTRACE_CONT, current_pid, 0, 0);
@@ -66,6 +64,7 @@ static int parent(std::unordered_map<std::string, Rule>& rules, pid_t child) {
             int child_status = WEXITSTATUS(status);
             if (current_pid == child) {
                 // printf("[Child exit with status %d]\n", child_status);
+                *didFinish = true;
                 return child_status;
             } else {
                 // printf("[Proc exit with status %d]\n", child_status);
@@ -139,18 +138,16 @@ static int parent(std::unordered_map<std::string, Rule>& rules, pid_t child) {
 
         printf("[Our rule is missing: %s]\n", matching_rule->name.c_str());
 
-        // ptrace(PTRACE_SYSCALL, current_pid, 0, 0);  // do the syscall
-        // current_pid = waitpid(0, &status, 0);
-        // if (ptrace(PTRACE_GETREGS, current_pid, 0, &regs) == -1) {
-        //     if (errno == ESRCH) {
-        //         printf("Child is exiting2:%d: %s\n", errno, strerror(errno));
-        //     } else {
-        //         printf("Get Regs Error2 %d: %s\n", errno, strerror(errno));
-        //     }
-        // }
-
-        // long syscall_ret = regs.rax;
-        // bool openAtSuccess = syscall_ret >= 0;
+        if (!matching_rule->hasBeenAddedToTasks) {
+            matching_rule->hasBeenAddedToTasks = true;
+            tasksToRun.push(matching_rule);
+            std::cout << "Adding task: Num left:" << tasksToRun.size() << std::endl;
+        }
+        matching_rule->triggers.insert(rule);
+        rule->num_triggs_left += 1;
+        rule->blocked_work = current_pid;
+        *didFinish = false;
+        return 0;
     }
 }
 
@@ -182,7 +179,25 @@ static void child(char** args) {
     execvp(args[0], args);
 }
 
-int trace_tasks(std::unordered_map<std::string, Rule>& rules, char** args) {
+int trace_tasks(std::queue<Rule*>& tasksToRun, std::unordered_map<std::string, Rule>& rules, Rule* rule, char** args, int* didFinish) {
+    if (rule->blocked_work != 0) {
+        pid_t current_pid = rule->blocked_work;
+        ptrace(PTRACE_SYSCALL, current_pid, 0, 0);  // do the syscall
+        int status;
+        struct user_regs_struct regs;
+        current_pid = waitpid(0, &status, 0);
+        if (ptrace(PTRACE_GETREGS, current_pid, 0, &regs) == -1) {
+            if (errno == ESRCH) {
+                printf("Child is exiting2:%d: %s\n", errno, strerror(errno));
+            } else {
+                printf("Get Regs Error2 %d: %s\n", errno, strerror(errno));
+            }
+        }
+        long syscall_ret = regs.rax;
+        bool openAtSuccess = syscall_ret >= 0;
+        printf("[Resuming work:%s]\n", rule->name.c_str());
+        return parent(tasksToRun, rules, rule, current_pid, didFinish);
+    }
     pid_t pid = fork();
     if (pid == -1) {
         std::cout << "Fork error" << std::endl;
@@ -191,5 +206,8 @@ int trace_tasks(std::unordered_map<std::string, Rule>& rules, char** args) {
         child(args);
         exit(0);
     }
-    return parent(rules, pid);
+    int status;
+    waitpid(pid, &status, 0);
+    ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESECCOMP | PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK);
+    return parent(tasksToRun, rules, rule, pid, didFinish);
 }
