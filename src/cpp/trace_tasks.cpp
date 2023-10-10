@@ -26,11 +26,11 @@
 // https://github.com/alfonsosanchezbeato/ptrace-redirect/blob/master/redir_filter.c
 //  https://github.com/skeeto/ptrace-examples/blob/master/minimal_strace.c
 // register order https://stackoverflow.com/questions/2535989/what-are-the-calling-conventions-for-unix-linux-system-calls-and-user-space-f
-static void read_file(pid_t pid, long rsi, char* file) {
+static void read_file(pid_t pid, long reg, char* file) {
     char* child_addr;
     unsigned long i;
 
-    child_addr = (char*)rsi;
+    child_addr = (char*)reg;
 
     do {
         long val;
@@ -51,8 +51,11 @@ static void read_file(pid_t pid, long rsi, char* file) {
     } while (i == sizeof(long));
 }
 
-static int process_signals(pid_t child) {
+static int parent(pid_t child) {
     int status;
+    waitpid(child, &status, 0);
+    ptrace(PTRACE_SETOPTIONS, child, 0, PTRACE_O_TRACESECCOMP | PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK);
+
     pid_t current_pid = child;
     while (1) {
         ptrace(PTRACE_CONT, current_pid, 0, 0);
@@ -124,28 +127,46 @@ static int process_signals(pid_t child) {
 
         printf("[Can't open: %s]\n", orig_file);
 
-        ptrace(PTRACE_SYSCALL, current_pid, 0, 0);  // do the syscall
-        current_pid = waitpid(0, &status, 0);
-        if (ptrace(PTRACE_GETREGS, current_pid, 0, &regs) == -1) {
-            if (errno == ESRCH) {
-                printf("Child is exiting2:%d: %s\n", errno, strerror(errno));
-            } else {
-                printf("Get Regs Error2 %d: %s\n", errno, strerror(errno));
-            }
-        }
+        // ptrace(PTRACE_SYSCALL, current_pid, 0, 0);  // do the syscall
+        // current_pid = waitpid(0, &status, 0);
+        // if (ptrace(PTRACE_GETREGS, current_pid, 0, &regs) == -1) {
+        //     if (errno == ESRCH) {
+        //         printf("Child is exiting2:%d: %s\n", errno, strerror(errno));
+        //     } else {
+        //         printf("Get Regs Error2 %d: %s\n", errno, strerror(errno));
+        //     }
+        // }
 
-        long syscall_ret = regs.rax;
-        bool openAtSuccess = syscall_ret >= 0;
-
-        // if ((flags & O_CREAT) || (flags & O_WRONLY)) {
-        //     printf("[Writing (%s) %s]\n", flags_str, orig_file);
-        // }
-        // if ((flags == O_RDONLY) || (flags & O_RDWR)) {
-        //     printf("[Reading (%s) %s]\n", flags_str, orig_file);
-        // }
-        // }
+        // long syscall_ret = regs.rax;
+        // bool openAtSuccess = syscall_ret >= 0;
     }
-    /* Find out file and re-direct if it is the target */
+}
+
+static int child(char** args) {
+    /* If open syscall, trace */
+    struct sock_filter filter[] = {
+        BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct seccomp_data, nr)),
+        BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, SYS_openat, 0, 1),
+        BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE),
+        BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW),
+    };
+    struct sock_fprog prog = {
+        .len = (unsigned short)(sizeof(filter) / sizeof(filter[0])),
+        .filter = filter,
+    };
+    ptrace(PTRACE_TRACEME, 0, 0, 0);
+    /* To avoid the need for CAP_SYS_ADMIN */
+    if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0) {
+        perror("prctl(PR_SET_NO_NEW_PRIVS)");
+        return 1;
+    }
+    if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) < 0) {
+        perror("when setting seccomp filter");
+        return 1;
+    }
+    kill(getpid(), SIGSTOP);
+    execvp(args[0], args);
+    exit(0);
 }
 
 int trace_tasks(std::unordered_map<std::string, Rule>& rules, char** args) {
@@ -153,37 +174,9 @@ int trace_tasks(std::unordered_map<std::string, Rule>& rules, char** args) {
     if (pid == -1) {
         std::cout << "Fork error" << std::endl;
     }
-    if (pid == 0) {  // child pid
-        /* If open syscall, trace */
-        struct sock_filter filter[] = {
-            BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct seccomp_data, nr)),
-            BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, SYS_openat, 0, 1),
-            BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE),
-            BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW),
-        };
-        struct sock_fprog prog = {
-            .len = (unsigned short)(sizeof(filter) / sizeof(filter[0])),
-            .filter = filter,
-        };
-        ptrace(PTRACE_TRACEME, 0, 0, 0);
-        /* To avoid the need for CAP_SYS_ADMIN */
-        if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0) {
-            perror("prctl(PR_SET_NO_NEW_PRIVS)");
-            return 1;
-        }
-        if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) < 0) {
-            perror("when setting seccomp filter");
-            return 1;
-        }
-        kill(getpid(), SIGSTOP);
-        execvp(args[0], args);
-        exit(0);
+    if (pid == 0) {          // child pid
+        return child(args);  // Never returns;
+    } else {
+        return parent(pid);
     }
-    // orig pid
-    // const char** sysMap = getSysMap();
-    int status;
-    // printf("Parent pid:%d\n\n", pid);
-    waitpid(pid, &status, 0);
-    ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESECCOMP | PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK);
-    return process_signals(pid);
 }
