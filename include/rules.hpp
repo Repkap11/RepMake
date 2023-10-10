@@ -10,7 +10,7 @@ class Rule;
 #define DRY_RUN 0
 #define USE_PTRACE 1
 
-#define RELATIVE_TIME 1
+#define RELATIVE_TIME 0
 
 #if RELATIVE_TIME
 #define REPMAKE_TIME int64_t
