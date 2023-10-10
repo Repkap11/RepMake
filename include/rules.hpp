@@ -7,9 +7,6 @@
 
 class Rule;
 
-#define DRY_RUN 0
-#define USE_PTRACE 1
-
 #define RELATIVE_TIME 0
 
 #if RELATIVE_TIME
@@ -50,5 +47,6 @@ class Rule {
     std::vector<std::string> tasks;
     REPMAKE_TIME self_modified_timestamp;
     REPMAKE_TIME deps_modified_timestamp;
+    std::unordered_set<Rule*> tasks_blocked_on_me;
     static void runTasksInOrder(const std::unordered_set<std::string>& targets_to_run, std::unordered_map<std::string, Rule>& rules);
 };

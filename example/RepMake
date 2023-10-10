@@ -1,12 +1,11 @@
-all: example
-    cat fish.txt
-    ./example
+all:
+    cat example
     
-example: example.o lib.o
+example:
     gcc example.o lib.o -o example
 
-example.o: example.c
+example.o:
     gcc -c example.c -o example.o
 
-lib.o: lib.c
+lib.o:
     gcc -c lib.c -o lib.o

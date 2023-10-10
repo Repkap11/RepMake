@@ -117,66 +117,85 @@ static int process_signals(pid_t child) {
         }
 
         int isSECTrap = status >> 8 == (SIGTRAP | (PTRACE_EVENT_SECCOMP << 8));
-
-        if (isSECTrap) {
-            struct user_regs_struct regs;
-            if (ptrace(PTRACE_GETREGS, current_pid, 0, &regs) == -1) {
-                if (errno == ESRCH) {
-                    printf("Child is exiting:%d: %s\n", errno, strerror(errno));
-                } else {
-                    printf("Get Regs Error %d: %s\n", errno, strerror(errno));
-                }
-            }
-            long syscall = regs.orig_rax;
-            if (syscall == SYS_openat) {
-                char orig_file[PATH_MAX];
-                long dirfd = regs.rdi;
-                long flags = regs.rdx;
-                read_file(current_pid, regs.rsi, orig_file);
-
-                ptrace(PTRACE_SYSCALL, current_pid, 0, 0);  // do the syscall
-                current_pid = waitpid(0, &status, 0);
-
-                if (ptrace(PTRACE_GETREGS, current_pid, 0, &regs) == -1) {
-                    if (errno == ESRCH) {
-                        printf("Child is exiting2:%d: %s\n", errno, strerror(errno));
-                    } else {
-                        printf("Get Regs Error2 %d: %s\n", errno, strerror(errno));
-                    }
-                }
-
-                long syscall_ret = regs.rax;
-                bool openAtSuccess = syscall_ret >= 0;
-                char flags_str[1024];
-                // char resolved_path[PATH_MAX];
-                // realpath(orig_file, resolved_path);
-
-                flagsToString(flags, flags_str, sizeof(flags_str));
-                bool isRelativeFile = (int)dirfd == AT_FDCWD;
-                const char* prefix_strs[] = {"/tmp/", "/usr/", "/etc/", "/lib/", "/dev/", NULL};
-                if (openAtSuccess && !startsWith(orig_file, prefix_strs)) {
-                    // if (!isRelativeFile) {
-                    printf("[Open %d: (%s) %s] = %ld\n", isRelativeFile, flags_str, orig_file, syscall_ret);
-                }
-
-                // if ((flags & O_CREAT) || (flags & O_WRONLY)) {
-                //     printf("[Writing (%s) %s]\n", flags_str, orig_file);
-                // }
-                // if ((flags == O_RDONLY) || (flags & O_RDWR)) {
-                //     printf("[Reading (%s) %s]\n", flags_str, orig_file);
-                // }
-                // }
-            } else {
-                printf("Syscall OTHER:%ld\n", syscall);
-            }
-        } else {
-            // printf("Not isSECTrap\n");
+        if (!isSECTrap) {
+            continue;
         }
-        /* Find out file and re-direct if it is the target */
+        struct user_regs_struct regs;
+        if (ptrace(PTRACE_GETREGS, current_pid, 0, &regs) == -1) {
+            if (errno == ESRCH) {
+                printf("Child is exiting:%d: %s\n", errno, strerror(errno));
+            } else {
+                printf("Get Regs Error %d: %s\n", errno, strerror(errno));
+            }
+        }
+        long syscall = regs.orig_rax;
+        char orig_file[PATH_MAX];
+        // if (syscall == SYS_execve) {
+        //     read_file(current_pid, regs.rdi, orig_file);
+        // }
+        if (syscall == SYS_openat) {
+            long dirfd = regs.rdi;
+            long flags = regs.rdx;
+            bool isRelativeFile = (int)dirfd == AT_FDCWD;
+            if (!isRelativeFile) {
+                // Not a relitive path, it's something strange give up.
+                continue;
+            }
+            // char flags_str[1024];
+            // flagsToString(flags, flags_str, sizeof(flags_str));
+            if (!(flags == O_RDONLY) || (flags & O_RDWR)) {
+                // Not reading the file, don't care.
+                continue;
+            }
+            read_file(current_pid, regs.rsi, orig_file);
+        } else {
+            //Some other syscall, we don't care.
+            continue;
+        }
+
+        char resolved_path[PATH_MAX];
+        realpath(orig_file, resolved_path);
+        const char* prefix_strs[] = {"/tmp/", "/usr/", "/etc/", "/lib/", "/dev/", NULL};
+        if (startsWith(orig_file, prefix_strs)) {
+            // Starts with a path we don't care about.
+            continue;
+        }
+
+        int fd = openat(AT_FDCWD, resolved_path, O_RDONLY);
+        bool file_avail = fd >= 0;
+        close(fd);
+        if (file_avail) {
+            // The file exists, great.
+            continue;
+        }
+
+        printf("[Can't open: %s]\n", orig_file);
+
+        ptrace(PTRACE_SYSCALL, current_pid, 0, 0);  // do the syscall
+        current_pid = waitpid(0, &status, 0);
+        if (ptrace(PTRACE_GETREGS, current_pid, 0, &regs) == -1) {
+            if (errno == ESRCH) {
+                printf("Child is exiting2:%d: %s\n", errno, strerror(errno));
+            } else {
+                printf("Get Regs Error2 %d: %s\n", errno, strerror(errno));
+            }
+        }
+
+        long syscall_ret = regs.rax;
+        bool openAtSuccess = syscall_ret >= 0;
+
+        // if ((flags & O_CREAT) || (flags & O_WRONLY)) {
+        //     printf("[Writing (%s) %s]\n", flags_str, orig_file);
+        // }
+        // if ((flags == O_RDONLY) || (flags & O_RDWR)) {
+        //     printf("[Reading (%s) %s]\n", flags_str, orig_file);
+        // }
+        // }
     }
+    /* Find out file and re-direct if it is the target */
 }
 
-int trace_tasks(char** args) {
+int trace_tasks(std::unordered_map<std::string, Rule>& rules, char** args) {
     pid_t pid = fork();
     if (pid == -1) {
         std::cout << "Fork error" << std::endl;

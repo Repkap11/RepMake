@@ -2,12 +2,13 @@
 
 #include <string.h>
 #include <sys/stat.h>
+
 #include <queue>
 #include <sstream>
 
 #include "trace_tasks.hpp"
 
-static int runTasks(const std::string& name, const std::vector<std::string>& tasks) {
+static int runTasks(std::unordered_map<std::string, Rule>& rules, const std::string& name, const std::vector<std::string>& tasks) {
     // TODO make all of these run in the same shell.
     char* cmd = strdup("/usr/bin/bash");
     char* dash_c = strdup("-c");
@@ -21,17 +22,8 @@ static int runTasks(const std::string& name, const std::vector<std::string>& tas
     std::string comands = ss.str();
     char* args[4] = {cmd, dash_c, (char*)(comands.c_str()), NULL};
 
-    int return_status = 0;
-#if DRY_RUN
-#else  // not DRY_RUN
-#if USE_PTRACE
-    trace_tasks(args);
+    int return_status = trace_tasks(rules, args);
 
-    // printf("Done processing signals.\n");
-#else   // not USE_STRACE
-    execvp(args[0], args);
-#endif  // USE_STRACE
-#endif  // DRY_RUN
     free(dash_c);
     free(cmd);
     return return_status;
@@ -132,7 +124,7 @@ void Rule::runTasksInOrder(const std::unordered_set<std::string>& targets_to_run
             const std::vector<std::string>& tasks = rule->tasks;
             if (tasks.size() != 0) {
                 did_any_task = true;
-                int ret = runTasks(rule->name, tasks);
+                int ret = runTasks(rules, rule->name, tasks);
                 if (ret) {
                     return;
                 }
