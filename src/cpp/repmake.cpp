@@ -8,101 +8,36 @@
 using namespace antlr4;
 using namespace antlr4::tree;
 
+std::pair<char*, std::streampos> readEntireFile(const char* inputFile);
+
+bool addContextToMap(RepMakeParser::RepmakeContext* context, std::map<std::string, Rule>& all_rules_map, std::unordered_set<std::string>& targets_to_run);
+
 int main(int argc, const char* argv[]) {
     std::unordered_set<std::string> targets_to_run;
     for (int i = 1; i < argc; i++) {
         targets_to_run.insert(std::string(argv[i]));
     }
 
-    const char* inputFile = "RepMake";
-
-    std::ifstream stream;
-    stream.open(inputFile);
-    stream.seekg(0, std::ios::end);
-    std::streampos fileSize = stream.tellg();
-    fileSize += 1;
-    stream.seekg(0, std::ios::beg);
-
-    char* buffer = new char[fileSize];
-    // Add a new line since i couldn't figure out how to write my rule without needing start of line token.
-    // Use \n instead of \n so it doesn't offset the line count (kinda hacky, but works).
-    buffer[0] = '\r';
-    stream.read(&buffer[1], fileSize);
-
-    ANTLRInputStream input(buffer, fileSize);
-    delete[] buffer;
-    input.name = inputFile;
-    RepMakeLexer lexer(&input);
-    auto vocab = lexer.getVocabulary();
-
-    if (false) {
-        lexer.reset();
-        // Print out the tokens.
-        std::vector<std::unique_ptr<Token>> tokens = lexer.getAllTokens();
-        for (const std::unique_ptr<Token>& token : tokens) {
-            if (token->getChannel() != Token::DEFAULT_CHANNEL) {
-                continue;
-            }
-            // std::cout << token->getChannel();
-            if (token->getType() == RepMakeLexer::NEW_LINE) {
-                std::cout << " NEW_LINE" << std::endl;
-            } else {
-                std::cout << " " << lexer.getErrorDisplay(vocab.getDisplayName(token->getType())) << " " << lexer.getErrorDisplay(token->getText()) << std::endl;
-            }
-        }
-        lexer.reset();
-    }
-
-    CommonTokenStream tokens(&lexer);
-    // TokenStreamRewriter rewriter(&tokens);
-    // rewriter.insertBefore(RepMakeLexer::NEW_LINE, "\n");
-    // TokenStream* ts = rewriter.getTokenStream();
-    // Token* firstToken = ts->get(0);
-    // std::cout << "First Token:" << lexer.getErrorDisplay(vocab.getDisplayName(firstToken->getType()));
-    // RepMakeParser parser(ts);
-    RepMakeParser parser(&tokens);
-    RepMakeParser::RepmakeContext* context = parser.repmake();
-
-    if (parser.getNumberOfSyntaxErrors() != 0) {
-        return 1;
-    }
-    // std::unordered_map<std::string, std::pair<std::unordered_set<std::string>, std::vector<std::string>>> all_rules_str;
     std::map<std::string, Rule> all_rules_map;
-
-    std::vector<RepMakeParser::Rep_make_ruleContext*> rules = context->rep_make_rule();
     bool error_flag = false;
-    // Add the data into our structure.
-
-    for (RepMakeParser::Rep_make_ruleContext* const rule : rules) {
-        std::string rule_name = rule->rule_name()->IDENTIFIER()->getText();
-        if (targets_to_run.empty()) {
-            targets_to_run.insert(rule_name);
+    const char* inputFiles[] = {"RepMake", ".RepDep"};
+    for (const char* inputFile : inputFiles) {
+        auto inputBuffer = readEntireFile(inputFile);
+        ANTLRInputStream input(inputBuffer.first, inputBuffer.second);
+        delete[] inputBuffer.first;
+        input.name = inputFile;
+        RepMakeLexer lexer(&input);
+        CommonTokenStream tokens(&lexer);
+        RepMakeParser parser(&tokens);
+        if (parser.getNumberOfSyntaxErrors() != 0) {
+            return 1;
         }
-        auto deps_list = rule->dependency_list();
-
-        std::unordered_set<std::string> deps_set;
-        if (deps_list != NULL) {
-            std::vector<RepMakeParser::Rule_nameContext*> deps = deps_list->rule_name();
-            for (RepMakeParser::Rule_nameContext* dep : deps) {
-                deps_set.insert(dep->IDENTIFIER()->getText());
-            }
+        auto context = parser.repmake();
+        if (parser.repmake() == NULL) {
+            return 1;
         }
-
-        std::vector<std::string> tasks_vector;
-        RepMakeParser::TasksContext* tasks = rule->tasks();
-        if (tasks != NULL) {
-            for (RepMakeParser::TaskContext* task : tasks->task()) {
-                tasks_vector.emplace_back(task->getText());
-            }
-        }
-
-        bool duplicate = !all_rules_map.insert({rule_name, {rule_name, std::move(deps_set), std::move(tasks_vector)}}).second;
-        if (duplicate) {
-            std::cerr << "Error: Duplicate rule defined: \"" << rule_name << "\"" << std::endl;
-            error_flag = true;
-        }
+        error_flag |= addContextToMap(context, all_rules_map, targets_to_run);
     }
-
     for (auto& element : all_rules_map) {
         std::string rule_name = element.first;
         Rule& rule = element.second;
@@ -150,9 +85,95 @@ int main(int argc, const char* argv[]) {
             rep_dep_out << " " << dep;
         }
         rep_dep_out << std::endl
-                  << std::endl;
+                    << std::endl;
     }
     rep_dep_out.close();
     // std::cout << "Success!" << std::endl;
     return 0;
+}
+
+std::pair<char*, std::streampos> readEntireFile(const char* inputFile) {
+    std::ifstream stream;
+    stream.open(inputFile);
+    stream.seekg(0, std::ios::end);
+    std::streampos fileSize = stream.tellg();
+    fileSize += 1;
+    stream.seekg(0, std::ios::beg);
+
+    char* buffer = new char[fileSize];
+    // Add a new line since i couldn't figure out how to write my rule without needing start of line token.
+    // Use \n instead of \n so it doesn't offset the line count (kinda hacky, but works).
+    buffer[0] = '\r';
+    stream.read(&buffer[1], fileSize);
+    return {buffer, fileSize};
+
+    // auto vocab = lexer.getVocabulary();
+
+    // if (false) {
+    //     lexer.reset();
+    //     // Print out the tokens.
+    //     std::vector<std::unique_ptr<Token>> tokens = lexer.getAllTokens();
+    //     for (const std::unique_ptr<Token>& token : tokens) {
+    //         if (token->getChannel() != Token::DEFAULT_CHANNEL) {
+    //             continue;
+    //         }
+    //         // std::cout << token->getChannel();
+    //         if (token->getType() == RepMakeLexer::NEW_LINE) {
+    //             std::cout << " NEW_LINE" << std::endl;
+    //         } else {
+    //             std::cout << " " << lexer.getErrorDisplay(vocab.getDisplayName(token->getType())) << " " << lexer.getErrorDisplay(token->getText()) << std::endl;
+    //         }
+    //     }
+    //     lexer.reset();
+    // }
+
+    // return parser;
+}
+
+bool addContextToMap(RepMakeParser::RepmakeContext* context, std::map<std::string, Rule>& all_rules_map, std::unordered_set<std::string>& targets_to_run) {
+    std::vector<RepMakeParser::Rep_make_ruleContext*> rules = context->rep_make_rule();
+    bool error_flag = false;
+    // Add the data into our structure.
+
+    for (RepMakeParser::Rep_make_ruleContext* const rule : rules) {
+        std::string rule_name = rule->rule_name()->IDENTIFIER()->getText();
+        if (targets_to_run.empty()) {
+            targets_to_run.insert(rule_name);
+        }
+        auto deps_list = rule->dependency_list();
+
+        std::unordered_set<std::string> deps_str;
+        if (deps_list != NULL) {
+            std::vector<RepMakeParser::Rule_nameContext*> deps = deps_list->rule_name();
+            for (RepMakeParser::Rule_nameContext* dep : deps) {
+                deps_str.insert(dep->IDENTIFIER()->getText());
+            }
+        }
+
+        std::vector<std::string> tasks_vector;
+        RepMakeParser::TasksContext* tasks = rule->tasks();
+        bool hasTasks = tasks != NULL;
+        if (hasTasks) {
+            for (RepMakeParser::TaskContext* task : tasks->task()) {
+                tasks_vector.emplace_back(task->getText());
+            }
+        }
+
+        auto success = all_rules_map.insert({rule_name, {rule_name, deps_str, tasks_vector}});
+        if (!success.second) {
+            // Failed to insert because duplicate.
+            Rule& existing = success.first->second;
+            if (existing.tasks.size() != 0 && hasTasks) {
+                std::cerr << "Error: Rule defined with multiple tasks: \"" << rule_name << "\"" << std::endl;
+                error_flag = true;
+            } else {
+                if (hasTasks) {
+                    existing.tasks = std::move(tasks_vector);
+                }
+            }
+            existing.deps_str.insert(deps_str.begin(), deps_str.end());
+            std::cout << "";
+        }
+    }
+    return error_flag;
 }

@@ -1,5 +1,5 @@
 #include <stdio.h>
 
 void lib_hello() {
-    printf("Lib Hello\n");
+    printf("Lib Hello2\n");
 }

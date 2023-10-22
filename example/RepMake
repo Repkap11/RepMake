@@ -10,10 +10,10 @@
 # dep2.o:
 #     echo "DEP2" > dep2.o
 
-all: build
-
-build:
+all:
     ./example
+
+build: example
 
 example:
     gcc example.o lib.o -o example

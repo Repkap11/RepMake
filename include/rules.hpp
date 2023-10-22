@@ -4,6 +4,7 @@
 #include <map>
 #include <unordered_set>
 #include <vector>
+#include <set>
 
 #include "limits.h"
 
@@ -29,7 +30,6 @@ class Rule {
           deps_str(deps_str),
           tasks(tasks) {
         realpath(name.c_str(), resolved_name);
-        int fish = 2;
     }
 
     bool operator==(const Rule& otherRule) const {
@@ -49,7 +49,7 @@ class Rule {
     size_t num_triggs_left;
     std::unordered_set<Rule*> triggers;
     std::unordered_set<Rule*> dep_rules;
-    std::unordered_set<std::string> dep_files;
+    std::set<std::string> dep_files;
     std::vector<std::string> tasks;
     REPMAKE_TIME self_modified_timestamp;
     REPMAKE_TIME deps_modified_timestamp;
