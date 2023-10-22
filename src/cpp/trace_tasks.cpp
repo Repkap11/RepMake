@@ -114,11 +114,13 @@ static int parent(std::queue<Rule*>& tasksToRun, std::map<std::string, Rule>& ru
         char resolved_path[PATH_MAX];
         realpath(orig_file, resolved_path);
         const char* prefix_strs[] = {"/tmp/", "/usr/", "/etc/", "/lib/", "/dev/", NULL};
+        // const char* prefix_strs[] = {NULL};
         if (str_startsWith(orig_file, prefix_strs)) {
             // Starts with a path we don't care about.
             continue;
         }
         const char* equal_strs[] = {"/tmp", NULL};
+        // const char* equal_strs[] = {NULL};
         if (str_equalsAny(orig_file, equal_strs)) {
             // Starts with a path we don't care about.
             continue;
