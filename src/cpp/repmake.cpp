@@ -67,7 +67,7 @@ int main(int argc, const char* argv[]) {
         return 1;
     }
     // std::unordered_map<std::string, std::pair<std::unordered_set<std::string>, std::vector<std::string>>> all_rules_str;
-    std::unordered_map<std::string, Rule> all_rules_map;
+    std::map<std::string, Rule> all_rules_map;
 
     std::vector<RepMakeParser::Rep_make_ruleContext*> rules = context->rep_make_rule();
     bool error_flag = false;
@@ -113,7 +113,7 @@ int main(int argc, const char* argv[]) {
             }
             auto pos = all_rules_map.find(dep_str);
             if (pos != all_rules_map.end()) {
-                //The depepdency is a rule
+                // The depepdency is a rule
                 Rule* dep = &pos->second;
                 rule.dep_rules.insert(dep);
                 dep->triggers.emplace(&rule);
@@ -141,6 +141,18 @@ int main(int argc, const char* argv[]) {
     }
     Rule::runTasksInOrder(targets_to_run, all_rules_map);
 
+    std::ofstream rep_dep_out(".RepDep");
+    for (const auto& element : all_rules_map) {
+        std::string rule_name = element.first;
+        const Rule& rule = element.second;
+        rep_dep_out << rule.name << ":";
+        for (const auto& dep : rule.dep_files) {
+            rep_dep_out << " " << dep;
+        }
+        rep_dep_out << std::endl
+                  << std::endl;
+    }
+    rep_dep_out.close();
     // std::cout << "Success!" << std::endl;
     return 0;
 }

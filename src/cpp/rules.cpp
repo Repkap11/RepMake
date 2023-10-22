@@ -9,7 +9,7 @@
 #include "trace_tasks.hpp"
 
 static void runTasks(std::queue<Rule*>& tasksToRun,                 //
-                     std::unordered_map<std::string, Rule>& rules,  //
+                     std::map<std::string, Rule>& rules,  //
                      Rule* rule,                                    //
                      const std::vector<std::string>& tasks,
                      int* ret, int* didFinish) {
@@ -56,7 +56,7 @@ REPMAKE_TIME currentTime(void) {
     return cur_time;
 }
 
-void Rule::runTasksInOrder(const std::unordered_set<std::string>& targets_to_run, std::unordered_map<std::string, Rule>& rules) {
+void Rule::runTasksInOrder(const std::unordered_set<std::string>& targets_to_run, std::map<std::string, Rule>& rules) {
     bool did_any_work;
 
     REPMAKE_TIME cur_time = currentTime();

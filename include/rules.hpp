@@ -1,7 +1,7 @@
 #pragma once
 
 #include <iostream>
-#include <unordered_map>
+#include <map>
 #include <unordered_set>
 #include <vector>
 
@@ -57,5 +57,5 @@ class Rule {
     pid_t blocked_child;
     pid_t blocked_work;
     bool isFinished = false;
-    static void runTasksInOrder(const std::unordered_set<std::string>& targets_to_run, std::unordered_map<std::string, Rule>& rules);
+    static void runTasksInOrder(const std::unordered_set<std::string>& targets_to_run, std::map<std::string, Rule>& rules);
 };

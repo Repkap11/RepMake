@@ -54,7 +54,7 @@ static void read_file(pid_t pid, long reg, char* file) {
     } while (i == sizeof(long));
 }
 
-static int parent(std::queue<Rule*>& tasksToRun, std::unordered_map<std::string, Rule>& rules, Rule* rule, pid_t child, pid_t current_pid, int* didFinish) {
+static int parent(std::queue<Rule*>& tasksToRun, std::map<std::string, Rule>& rules, Rule* rule, pid_t child, pid_t current_pid, int* didFinish) {
     int status;
     while (1) {
         ptrace(PTRACE_CONT, current_pid, 0, 0);
@@ -187,7 +187,7 @@ static void child(char** args) {
     execvp(args[0], args);
 }
 
-int trace_tasks(std::queue<Rule*>& tasksToRun, std::unordered_map<std::string, Rule>& rules, Rule* rule, char** args, int* didFinish) {
+int trace_tasks(std::queue<Rule*>& tasksToRun, std::map<std::string, Rule>& rules, Rule* rule, char** args, int* didFinish) {
     if (rule->blocked_work != 0) {
         pid_t child = rule->blocked_child;
         pid_t current_pid = rule->blocked_work;

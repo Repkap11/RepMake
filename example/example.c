@@ -6,7 +6,7 @@
 extern void lib_hello();
 
 int main() {
-    printf("Hello, World\n");
+    printf("Hello, World2\n");
     // for (int i = 0; i < 1000; i++) {
     //     int fd = open("TWO.txt", O_RDONLY);
     //     char* buff = malloc(100);
