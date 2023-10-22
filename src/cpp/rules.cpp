@@ -131,7 +131,7 @@ void Rule::runTasksInOrder(const std::unordered_set<std::string>& targets_to_run
 
             REPMAKE_TIME self_modified_timestamp = rule->self_modified_timestamp;
             REPMAKE_TIME deps_modified_timestamp = rule->deps_modified_timestamp;
-            int didFinish = false;
+            int didFinish = true;
             if (self_modified_timestamp < deps_modified_timestamp) {
                 const std::vector<std::string>& tasks = rule->tasks;
                 if (tasks.size() != 0) {

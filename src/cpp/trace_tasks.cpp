@@ -114,7 +114,12 @@ static int parent(std::queue<Rule*>& tasksToRun, std::map<std::string, Rule>& ru
         char resolved_path[PATH_MAX];
         realpath(orig_file, resolved_path);
         const char* prefix_strs[] = {"/tmp/", "/usr/", "/etc/", "/lib/", "/dev/", NULL};
-        if (startsWith(orig_file, prefix_strs)) {
+        if (str_startsWith(orig_file, prefix_strs)) {
+            // Starts with a path we don't care about.
+            continue;
+        }
+        const char* equal_strs[] = {"/tmp", NULL};
+        if (str_equalsAny(orig_file, equal_strs)) {
             // Starts with a path we don't care about.
             continue;
         }
@@ -122,10 +127,7 @@ static int parent(std::queue<Rule*>& tasksToRun, std::map<std::string, Rule>& ru
         int fd = openat(AT_FDCWD, resolved_path, O_RDONLY);
         bool file_avail = fd >= 0;
         close(fd);
-        if (file_avail) {
-            // The file exists, great.
-            continue;
-        }
+
         Rule* matching_rule = NULL;
         for (auto& it : rules) {
             Rule& rule = it.second;
@@ -136,6 +138,10 @@ static int parent(std::queue<Rule*>& tasksToRun, std::map<std::string, Rule>& ru
         }
         if (matching_rule == NULL) {
             // This file isn't one of our rules, just let the open fail.
+            if (file_avail) {
+                // The file exists.
+                rule->dep_files.insert(orig_file);
+            }
             continue;
         }
 

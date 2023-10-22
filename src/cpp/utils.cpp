@@ -38,11 +38,35 @@ void flagsToString(long flags, char* result, size_t result_size) {
     }
 }
 
-int startsWith(const char* str, const char** prefixes) {
+int str_startsWith(const char* str, const char** prefixes) {
     int i = 0;
+    int len = strlen(str);
     const char* prefix = prefixes[i++];
     while (prefix != NULL) {
-        if (strncmp(str, prefix, strlen(prefix)) == 0) {
+        int pref_len = strlen(prefix);
+        if (len < pref_len) {
+            prefix = prefixes[i++];
+            continue;
+        }
+        if (strncmp(str, prefix, pref_len) == 0) {
+            return 1;  // String starts with one of the prefixes
+        }
+        prefix = prefixes[i++];
+    }
+    return 0;  // String does not start with any of the prefixes
+}
+
+int str_equalsAny(const char* str, const char** prefixes) {
+    int i = 0;
+    int len = strlen(str);
+    const char* prefix = prefixes[i++];
+    while (prefix != NULL) {
+        int pref_len = strlen(prefix);
+        if (len != pref_len) {
+            prefix = prefixes[i++];
+            continue;
+        }
+        if (strncmp(str, prefix, pref_len) == 0) {
             return 1;  // String starts with one of the prefixes
         }
         prefix = prefixes[i++];
