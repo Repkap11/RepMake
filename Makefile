@@ -25,11 +25,10 @@ DEPS = $(patsubst src/%.cpp,out/%.d, $(wildcard src/*.cpp))
 all: out/$(TARGET)
 
 dev: out/$(TARGET)
-	# @cd example && SHELL=../$< make
-	./$< -c "echo Test"
+	cd example && make
 
 valgrind: out/$(TARGET)
-	@cd example && SHELL=../$< valgrind --leak-check=full -s ../$< -c "echo Test"
+	@cd example && valgrind --leak-check=full -s ../$< -c "touch Test"
 
 out:
 	mkdir -p $@

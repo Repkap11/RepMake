@@ -1,9 +1,11 @@
-all:
+SHELL = ../out/repshell $@
+
+all: example
 	./example
 
 build: example
 
-example:
+example: lib.o example.o
 	gcc example.o lib.o -o example
 
 example.o:
