@@ -25,7 +25,7 @@ DEPS = $(patsubst src/%.cpp,out/%.d, $(wildcard src/*.cpp))
 all: out/$(TARGET)
 
 dev: out/$(TARGET)
-	cd example && make
+	cd example && make lib.o
 
 valgrind: out/$(TARGET)
 	@cd example && valgrind --leak-check=full -s ../$< -c "touch Test"

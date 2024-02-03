@@ -26,11 +26,11 @@
 #include "logging.hpp"
 
 static void runBash( int argc, char *argv[] ) {
-    pr_debug_raw( "Bash args: " );
-    for ( int i = 0; i < argc; i++ ) {
-        pr_debug_raw( "%s ", argv[ i ] );
-    }
-    pr_debug_raw( "\n" );
+    // pr_debug_raw( "Bash args: " );
+    // for ( int i = 0; i < argc; i++ ) {
+    //     pr_debug_raw( "%s ", argv[ i ] );
+    // }
+    // pr_debug_raw( "\n" );
 
     /* If open syscall, trace */
     struct sock_filter filter[] = {
@@ -124,13 +124,18 @@ static int traceBash( pid_t child, pid_t current_pid ) {
         }
         long syscall = regs.orig_rax;
         char orig_file[ PATH_MAX ];
+        bool isWrite = false;
+        bool isRead = false;
+        long flags;
         if ( syscall == SYS_access ) {
             read_file( current_pid, regs.rdi, orig_file );
+            isRead = true;
         } else if ( syscall == SYS_execve ) {
             read_file( current_pid, regs.rdi, orig_file );
+            isRead = true;
         } else if ( syscall == SYS_openat ) {
             long dirfd = regs.rdi;
-            long flags = regs.rdx;
+            flags = regs.rdx;
             bool isRelativeFile = ( int )dirfd == AT_FDCWD;
             if ( !isRelativeFile ) {
                 // Not a relitive path, it's something strange give up.
@@ -138,9 +143,13 @@ static int traceBash( pid_t child, pid_t current_pid ) {
             }
             // char flags_str[1024];
             // flagsToString(flags, flags_str, sizeof(flags_str));
-            if ( !( flags == O_RDONLY ) || ( flags & O_RDWR ) ) {
-                // Not reading the file, don't care.
-                continue;
+            if ( ( flags & O_ACCMODE ) == O_RDONLY ) {
+                isRead = true;
+            } else if ( ( flags & O_ACCMODE ) == O_WRONLY ) {
+                isWrite = true;
+            } else if ( ( flags & O_ACCMODE ) == O_RDWR ) {
+                isWrite = true;
+                isRead = true;
             }
             read_file( current_pid, regs.rsi, orig_file );
         } else {
@@ -150,17 +159,18 @@ static int traceBash( pid_t child, pid_t current_pid ) {
 
         char resolved_path[ PATH_MAX ];
         realpath( orig_file, resolved_path );
-        const char *prefix_strs[] = { "/tmp/", "/usr/", "/etc/", "/lib/", "/dev/", "/sys/", "/proc/", NULL };
+        // const char *prefix_strs[] = { "/tmp/", "/usr/", "/etc/", "/lib/", "/dev/", "/sys/", "/proc/", "/run/", "/snap/", NULL };
+        const char *prefix_strs[] = { "/", NULL }; // any nont relative files.
         // const char* prefix_strs[] = {NULL};
-        if ( str_startsWith( resolved_path, prefix_strs ) ) {
+        if ( str_startsWith( orig_file, prefix_strs ) ) {
             // Starts with a path we don't care about.
-            continue;
+            // continue;
         }
         const char *equal_strs[] = { "/tmp", NULL };
         // const char* equal_strs[] = {NULL};
         if ( str_equalsAny( orig_file, equal_strs ) ) {
             // Starts with a path we don't care about.
-            continue;
+            // continue;
         }
 
         int fd = openat( AT_FDCWD, resolved_path, O_RDONLY );
@@ -171,18 +181,19 @@ static int traceBash( pid_t child, pid_t current_pid ) {
             continue;
         }
 
-        // pr_debug( "REP: orig_file: \"%s\"  resolved: \"%s\"", orig_file, resolved_path );
-        pr_debug( "REP: \"%s\"", resolved_path );
+        // pr_debug( "WroteFile: orig_file: \"%s\"  resolved: \"%s\"", orig_file, resolved_path );
+        pr_debug( "Access: 0x%lX r:%d w:%d \"%s\"", flags, isRead, isWrite, orig_file );
+        pr_debug( "" );
     }
     pr_debug( "Exiting loop" );
 }
 
 int main( int argc, char *argv[] ) {
-    pr_debug_raw( "Args: " );
-    for ( int i = 0; i < argc; i++ ) {
-        pr_debug_raw( "%s ", argv[ i ] );
-    }
-    pr_debug_raw( "\n" );
+    // pr_debug_raw( "Args: " );
+    // for ( int i = 0; i < argc; i++ ) {
+    //     pr_debug_raw( "%s ", argv[ i ] );
+    // }
+    // pr_debug_raw( "\n" );
 
     int first_cmd = 1;
     if ( strncmp( argv[ 1 ], "-c", 3 ) == 0 ) {
