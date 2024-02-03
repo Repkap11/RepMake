@@ -97,6 +97,7 @@ static int traceBash( pid_t child, pid_t current_pid ) {
         ptrace( PTRACE_CONT, current_pid, 0, 0 );
 
         current_pid = waitpid( 0, &status, 0 );
+        // pr_debug( "PID:%d", current_pid );
 
         if ( WIFEXITED( status ) ) {
             int child_status = WEXITSTATUS( status );
@@ -164,26 +165,27 @@ static int traceBash( pid_t child, pid_t current_pid ) {
         // const char* prefix_strs[] = {NULL};
         if ( str_startsWith( orig_file, prefix_strs ) ) {
             // Starts with a path we don't care about.
-            // continue;
+            continue;
         }
         const char *equal_strs[] = { "/tmp", NULL };
         // const char* equal_strs[] = {NULL};
         if ( str_equalsAny( orig_file, equal_strs ) ) {
             // Starts with a path we don't care about.
-            // continue;
+            continue;
         }
 
         int fd = openat( AT_FDCWD, resolved_path, O_RDONLY );
         bool file_avail = fd >= 0;
         close( fd );
-        if ( !file_avail ) {
-            // File doesn't exist, we don't care.
+        if ( !isWrite && !file_avail ) {
+            // File doesn't exist, and we're not writing we don't care.
+            //TODO run a dep...
             continue;
         }
 
         // pr_debug( "WroteFile: orig_file: \"%s\"  resolved: \"%s\"", orig_file, resolved_path );
-        pr_debug( "Access: 0x%lX r:%d w:%d \"%s\"", flags, isRead, isWrite, orig_file );
-        pr_debug( "" );
+        pr_debug( "Access: r:%d w:%d \"%s\"", isRead, isWrite, orig_file );
+        // pr_debug( "" );
     }
     pr_debug( "Exiting loop" );
 }
