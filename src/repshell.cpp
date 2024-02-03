@@ -187,7 +187,7 @@ static int traceBash( pid_t child, pid_t current_pid ) {
         pr_debug( "Access: r:%d w:%d \"%s\"", isRead, isWrite, orig_file );
         // pr_debug( "" );
     }
-    pr_debug( "Exiting loop" );
+    // pr_debug( "Exiting loop" );
 }
 
 int main( int argc, char *argv[] ) {
@@ -222,6 +222,6 @@ int main( int argc, char *argv[] ) {
     ptrace( PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESECCOMP | PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK );
     int ret = traceBash( pid, pid );
     free( cmd );
-    pr_debug( "Exiting with:%d (%s)", ret, strerror( ret ) );
+    // pr_debug( "Exiting with:%d (%s)", ret, strerror( ret ) );
     return ret;
 }
