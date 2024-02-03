@@ -1,5 +1,8 @@
 SHELL = ../out/repshell $@
 
+CPUS ?= $(shell nproc || echo 1)
+
+
 all: example
 	./example
 

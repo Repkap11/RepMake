@@ -23,13 +23,14 @@
 #include <iostream>
 #include <queue>
 #include "utils.hpp"
+#include "logging.hpp"
 
 static void runBash( int argc, char *argv[] ) {
-    printf( "Bash args: " );
+    pr_debug_raw( "Bash args: " );
     for ( int i = 0; i < argc; i++ ) {
-        printf( "%s ", argv[ i ] );
+        pr_debug_raw( "%s ", argv[ i ] );
     }
-    printf( "\n" );
+    pr_debug_raw( "\n" );
 
     /* If open syscall, trace */
     struct sock_filter filter[] = {
@@ -76,7 +77,7 @@ static void read_file( pid_t pid, long reg, char *file ) {
 
         val = ptrace( PTRACE_PEEKTEXT, pid, child_addr, NULL );
         if ( val == -1 ) {
-            fprintf( stderr, "PTRACE_PEEKTEXT error: %s", strerror( errno ) );
+            pr_debug( "PTRACE_PEEKTEXT error: %s", strerror( errno ) );
             exit( 1 );
         }
         child_addr += sizeof( long );
@@ -100,11 +101,11 @@ static int traceBash( pid_t child, pid_t current_pid ) {
         if ( WIFEXITED( status ) ) {
             int child_status = WEXITSTATUS( status );
             if ( current_pid == child ) {
-                printf( "Child quit!\n" );
+                pr_debug( "Child quit!" );
 
                 return child_status;
             } else {
-                // printf("[Proc exit with status %d]\n", child_status);
+                // pr_debug("[Proc exit with status %d]", child_status);
                 continue;
             }
         }
@@ -116,9 +117,9 @@ static int traceBash( pid_t child, pid_t current_pid ) {
         struct user_regs_struct regs;
         if ( ptrace( PTRACE_GETREGS, current_pid, 0, &regs ) == -1 ) {
             if ( errno == ESRCH ) {
-                printf( "Child is exiting:%d: %s\n", errno, strerror( errno ) );
+                pr_debug( "Child is exiting:%d: %s", errno, strerror( errno ) );
             } else {
-                printf( "Get Regs Error %d: %s\n", errno, strerror( errno ) );
+                pr_debug( "Get Regs Error %d: %s", errno, strerror( errno ) );
             }
         }
         long syscall = regs.orig_rax;
@@ -149,7 +150,7 @@ static int traceBash( pid_t child, pid_t current_pid ) {
 
         char resolved_path[ PATH_MAX ];
         realpath( orig_file, resolved_path );
-        const char *prefix_strs[] = { "/tmp/", "/usr/", "/etc/", "/lib/", "/dev/", NULL };
+        const char *prefix_strs[] = { "/tmp/", "/usr/", "/etc/", "/lib/", "/dev/", "/sys/", "/proc/", NULL };
         // const char* prefix_strs[] = {NULL};
         if ( str_startsWith( resolved_path, prefix_strs ) ) {
             // Starts with a path we don't care about.
@@ -165,25 +166,31 @@ static int traceBash( pid_t child, pid_t current_pid ) {
         int fd = openat( AT_FDCWD, resolved_path, O_RDONLY );
         bool file_avail = fd >= 0;
         close( fd );
-        if (!file_avail){
-            //File doesn't exist, we don't care.
+        if ( !file_avail ) {
+            // File doesn't exist, we don't care.
             continue;
         }
 
-        // printf( "REP: orig_file: \"%s\"  resolved: \"%s\"\n", orig_file, resolved_path );
-        printf( "REP: \"%s\"\n", resolved_path );
+        // pr_debug( "REP: orig_file: \"%s\"  resolved: \"%s\"", orig_file, resolved_path );
+        pr_debug( "REP: \"%s\"", resolved_path );
     }
-    printf( "Exiting loop\n" );
+    pr_debug( "Exiting loop" );
 }
 
 int main( int argc, char *argv[] ) {
-    // printf( "Args: " );
-    // for ( int i = 0; i < argc; i++ ) {
-    //     printf( "%s ", argv[ i ] );
-    // }
-    // printf( "\n" );
+    pr_debug_raw( "Args: " );
+    for ( int i = 0; i < argc; i++ ) {
+        pr_debug_raw( "%s ", argv[ i ] );
+    }
+    pr_debug_raw( "\n" );
 
-    printf( "Traceing task:%s\n", argv[ 1 ] );
+    int first_cmd = 1;
+    if ( strncmp( argv[ 1 ], "-c", 3 ) == 0 ) {
+        first_cmd = 0;
+        pr_debug( "Traceing Unknown" );
+    } else {
+        pr_debug( "Traceing task:%s", argv[ 1 ] );
+    }
 
     char *cmd = strdup( "/usr/bin/bash" );
 
@@ -192,8 +199,9 @@ int main( int argc, char *argv[] ) {
         std::cout << "Fork error" << std::endl;
     }
     if ( pid == 0 ) {
-        argv[ 1 ] = cmd;
-        runBash( argc - 1, &argv[ 1 ] );
+
+        argv[ first_cmd ] = cmd;
+        runBash( argc - first_cmd, &argv[ first_cmd ] );
         exit( 0 );
     }
     int status;
@@ -201,6 +209,6 @@ int main( int argc, char *argv[] ) {
     ptrace( PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESECCOMP | PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK );
     int ret = traceBash( pid, pid );
     free( cmd );
-    printf( "Exiting with:%d (%s)\n", ret, strerror( ret ) );
+    pr_debug( "Exiting with:%d (%s)", ret, strerror( ret ) );
     return ret;
 }
