@@ -1,4 +1,4 @@
-SHELL = ../out/RepShell $@
+SHELL = ../out/RepShell --task $@ --
 
 all:
 	./example

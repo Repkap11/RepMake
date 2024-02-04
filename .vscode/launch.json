@@ -4,8 +4,14 @@
             "name": "RepMake Debug",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceRoot}/out/repmake",
-            "args": [],
+            "program": "${workspaceRoot}/out/RepShell",
+            "args": [
+                "--task",
+                "lib.o",
+                "--",
+                "-c",
+                "gcc -c lib.c -o lib.o"
+            ],
             "stopAtEntry": false,
             "cwd": "${workspaceRoot}/example",
             "environment": [],

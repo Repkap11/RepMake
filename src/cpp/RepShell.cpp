@@ -103,8 +103,7 @@ static int traceBash( pid_t child, pid_t current_pid ) {
         if ( WIFEXITED( status ) ) {
             int child_status = WEXITSTATUS( status );
             if ( current_pid == child ) {
-                pr_debug( "Child quit!" );
-
+                // pr_debug( "Child quit!" );
                 return child_status;
             } else {
                 // pr_debug("[Proc exit with status %d]", child_status);
@@ -207,29 +206,56 @@ int main( int argc, char *argv[] ) {
     // }
     // pr_debug_raw( "\n" );
 
-    if ( false ) {
-        char proc_str[ 64 ];
-        char cmdLine[ PATH_MAX ];
-        FILE *proc_file;
-        pid_t parent_pid = getppid( );
-        pr_debug( "Parent pid:%d", parent_pid );
+    // if ( false ) {
+    //     char proc_str[ 64 ];
+    //     char cmdLine[ PATH_MAX ];
+    //     FILE *proc_file;
+    //     pid_t parent_pid = getppid( );
+    //     pr_debug( "Parent pid:%d", parent_pid );
 
-        snprintf( proc_str, PATH_MAX, "/proc/%i/cmdline", parent_pid );
-        proc_file = fopen( proc_str, "r" );
-        fgets( cmdLine, PATH_MAX, proc_file );
-        fclose( proc_file );
-        pr_debug( "Parent cmdline:%s", cmdLine );
+    //     snprintf( proc_str, PATH_MAX, "/proc/%i/cmdline", parent_pid );
+    //     proc_file = fopen( proc_str, "r" );
+    //     fgets( cmdLine, PATH_MAX, proc_file );
+    //     fclose( proc_file );
+    //     pr_debug( "Parent cmdline:%s", cmdLine );
 
-        // This can be used to re-exec make.
-        sprintf( proc_str, "/proc/%i/exe", parent_pid );
+    //     // This can be used to re-exec make.
+    //     sprintf( proc_str, "/proc/%i/exe", parent_pid );
+    // }
+
+    bool pendingDashTask = false;
+    bool foundArgEndMarker = false;
+    const char *task = NULL;
+    int i;
+    for ( i = 1; i < argc; i++ ) {
+        const char *arg = argv[ i ];
+        // pr_debug( "Arg:%d %s", i, arg );
+        if ( strncmp( "--", arg, 3 ) == 0 ) {
+            foundArgEndMarker = true;
+            break;
+        } else if ( pendingDashTask ) {
+            task = arg;
+        } else if ( strncmp( "--task", arg, 7 ) == 0 ) {
+            pendingDashTask = true;
+        } else {
+            pr_debug( "Unexpected arg:%s", arg );
+            return 1;
+        }
     }
+    if ( !foundArgEndMarker ) {
+        pr_debug( "uage: RepShell [--task task_name] -- [shell args...]" );
+        return 1;
+    }
+    if ( i == argc - 1 ) {
+        pr_debug( "No args to shell given." );
+        return 1;
+    }
+    int argEndMarker = i;
 
-    int first_cmd = 1;
-    if ( strncmp( argv[ 1 ], "-c", 3 ) == 0 ) {
-        first_cmd = 0;
+    if ( task == NULL ) {
         pr_debug( "Traceing Unknown" );
     } else {
-        pr_debug( "Traceing task:%s", argv[ 1 ] );
+        pr_debug( "Traceing task: %s", task );
     }
 
     char *cmd = strdup( "/usr/bin/bash" );
@@ -239,9 +265,8 @@ int main( int argc, char *argv[] ) {
         std::cout << "Fork error" << std::endl;
     }
     if ( pid == 0 ) {
-
-        argv[ first_cmd ] = cmd;
-        runBash( argc - first_cmd, &argv[ first_cmd ] );
+        argv[ argEndMarker ] = cmd;
+        runBash( argc - argEndMarker, &argv[ argEndMarker ] );
         exit( 0 );
     }
     int status;
