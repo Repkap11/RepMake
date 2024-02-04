@@ -21,8 +21,12 @@
 
 #include <iostream>
 #include <queue>
+#include <set>
+#include <map>
+#include <fstream>
 #include "utils.hpp"
 #include "logging.hpp"
+#include "rules.hpp"
 
 static void runBash( int argc, char *argv[] ) {
     // pr_debug_raw( "Bash args: " );
@@ -92,7 +96,7 @@ static void read_file( pid_t pid, long reg, char *file ) {
     } while ( i == sizeof( long ) );
 }
 
-static int traceBash( pid_t child, pid_t current_pid ) {
+static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules ) {
     int status;
     while ( 1 ) {
         ptrace( PTRACE_CONT, current_pid, 0, 0 );
@@ -186,10 +190,9 @@ static int traceBash( pid_t child, pid_t current_pid ) {
         int fd = openat( AT_FDCWD, resolved_path, O_RDONLY );
         bool file_avail = fd >= 0;
         close( fd );
-        if ( !isWrite && !file_avail ) {
-            // File doesn't exist, and we're not writing we don't care.
-            // TODO run a dep...
-            // continue;
+
+        if ( isRead ) {
+            new_rules.deps.insert( orig_file );
         }
 
         // pr_debug( "WroteFile: orig_file: \"%s\"  resolved: \"%s\"", orig_file, resolved_path );
@@ -258,22 +261,51 @@ int main( int argc, char *argv[] ) {
         pr_debug( "Traceing task: %s", task );
     }
 
-    char *cmd = strdup( "/usr/bin/bash" );
-
     pid_t pid = fork( );
     if ( pid == -1 ) {
         std::cout << "Fork error" << std::endl;
     }
     if ( pid == 0 ) {
+        char *cmd = strdup( "/usr/bin/bash" );
+
         argv[ argEndMarker ] = cmd;
         runBash( argc - argEndMarker, &argv[ argEndMarker ] );
+        free( cmd );
         exit( 0 );
     }
     int status;
     waitpid( pid, &status, 0 );
     ptrace( PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESECCOMP | PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK );
-    int ret = traceBash( pid, pid );
-    free( cmd );
+
+    std::set<Rule> all_rules; // TODO parse out previous rules.
+    Rule new_rule( task );
+
+    int ret = traceBash( pid, pid, new_rule );
+
+    new_rule.deps.erase( new_rule.name ); // Don't set a rule depend on itself.
+
+    std::set<Rule>::iterator iter = all_rules.find( new_rule );
+    if ( iter != all_rules.end( ) ) {
+        // Already exists in rules, add the deps we found, if any.
+        const Rule &previous_rule = *iter;
+        // Cast away const since the deps of a rules don't impact the hash of the item in the set.
+        Rule &editable_rules = const_cast<Rule &>( previous_rule );
+        editable_rules.deps.insert( new_rule.deps.begin( ), new_rule.deps.end( ) );
+    } else {
+        // Rule is new, add it to the set;
+        all_rules.insert( new_rule );
+    }
+
+    std::ofstream rep_dep_out( ".RepDep" );
+    for ( const Rule &rule : all_rules ) {
+        rep_dep_out << rule.name << ":";
+        for ( const auto &dep : rule.deps ) {
+            rep_dep_out << " " << dep;
+        }
+        rep_dep_out << std::endl << std::endl;
+    }
+    rep_dep_out.close( );
+
     // pr_debug( "Exiting with:%d (%s)", ret, strerror( ret ) );
     return ret;
 }

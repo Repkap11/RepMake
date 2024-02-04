@@ -61,6 +61,21 @@
         "typeinfo": "cpp",
         "queue": "cpp",
         "fcntl.h": "c",
-        "unistd.h": "c"
+        "unistd.h": "c",
+        "span": "cpp",
+        "charconv": "cpp",
+        "compare": "cpp",
+        "concepts": "cpp",
+        "numbers": "cpp",
+        "semaphore": "cpp",
+        "stop_token": "cpp",
+        "variant": "cpp",
+        "format": "cpp",
+        "__nullptr": "cpp",
+        "__bit_reference": "cpp",
+        "__hash_table": "cpp",
+        "__split_buffer": "cpp",
+        "__tree": "cpp",
+        "filesystem": "cpp"
     }
 }

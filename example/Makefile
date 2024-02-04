@@ -1,4 +1,5 @@
 SHELL = ../out/RepShell --task $@ --
+-include .RepDep
 
 all:
 	./example
