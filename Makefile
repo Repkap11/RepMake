@@ -1,6 +1,6 @@
 BEFORE_VARS := $(.VARIABLES)
 
-TARGET=repmake
+TARGET=RepShell
 
 CPUS ?= $(shell nproc || echo 1)
 MAKEFLAGS += --warn-undefined-variables
@@ -35,7 +35,10 @@ DEPS = \
 all: out/$(TARGET)
 
 dev: out/$(TARGET)
-	@cd example && ../$<
+	@cd example && make
+
+install:
+	sudo apt-get install antlr4
 
 valgrind: out/$(TARGET)
 	@cd example && valgrind --leak-check=full -s ../$<
@@ -52,16 +55,16 @@ out/%.o: src/cpp/%.cpp out/antlr_src Makefile | out
 	@#Use g++ to build o file and a dependecy tree .d file for every cpp file
 	ccache g++ $(INCLUDES_CPP) $(CFLAGS_CPP) -MMD -MP -MF $(patsubst %.o,%.d,$@) -MT $(patsubst %.d,%.o,$@) -c $< -o $@
 
-out/antlr_src/%.cpp: src/antlr/RepMake.g4 out/antlr_src Makefile
+out/antlr_src/%.cpp: src/antlr/$(TARGET).g4 out/antlr_src Makefile
 	touch $@
 
 out/antlr_out:
 	mkdir -p $@
 
-out/antlr_out/%.o: out/antlr_src/%.cpp src/antlr/RepMake.g4 Makefile | out/antlr_out
+out/antlr_out/%.o: out/antlr_src/%.cpp src/antlr/$(TARGET).g4 Makefile | out/antlr_out
 	ccache g++ $(INCLUDES_ANTLR) $(CFLAGS_ANTLR) -MMD -MP -MF $(patsubst %.o,%.d,$@) -MT $(patsubst %.d,%.o,$@) -c $< -o $@
 
-out/antlr_src: src/antlr/RepMake.g4
+out/antlr_src: src/antlr/$(TARGET).g4
 	rm -rf $@
 	antlr4 -no-listener -message-format gnu -Xexact-output-dir -Dlanguage=Cpp $< -o $@
 
