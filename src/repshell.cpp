@@ -41,6 +41,8 @@ static void runBash( int argc, char *argv[] ) {
         BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_TRACE ),
         BPF_JUMP( BPF_JMP + BPF_JEQ + BPF_K, SYS_execve, 0, 1 ),
         BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_TRACE ),
+        // BPF_JUMP( BPF_JMP + BPF_JEQ + BPF_K, SYS_newfstatat, 0, 1 ),
+        // BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_TRACE ),
         BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_ALLOW ),
     };
     struct sock_fprog prog = {
@@ -127,7 +129,16 @@ static int traceBash( pid_t child, pid_t current_pid ) {
         char orig_file[ PATH_MAX ];
         bool isWrite = false;
         bool isRead = false;
-        long flags;
+        // if ( syscall == SYS_newfstatat ) {
+        //     long dirfd = regs.rdi;
+        //     bool isRelativeFile = ( int )dirfd == AT_FDCWD;
+        //     if ( !isRelativeFile ) {
+        //         // Not a relitive path, it's something strange give up.
+        //         continue;
+        //     }
+        //     // pr_debug( "rsi:%s", orig_file );
+        //     read_file( current_pid, regs.rsi, orig_file );
+        //     isRead = true;
         if ( syscall == SYS_access ) {
             read_file( current_pid, regs.rdi, orig_file );
             isRead = true;
@@ -136,7 +147,7 @@ static int traceBash( pid_t child, pid_t current_pid ) {
             isRead = true;
         } else if ( syscall == SYS_openat ) {
             long dirfd = regs.rdi;
-            flags = regs.rdx;
+            long flags = regs.rdx;
             bool isRelativeFile = ( int )dirfd == AT_FDCWD;
             if ( !isRelativeFile ) {
                 // Not a relitive path, it's something strange give up.
@@ -167,7 +178,7 @@ static int traceBash( pid_t child, pid_t current_pid ) {
             // Starts with a path we don't care about.
             continue;
         }
-        const char *equal_strs[] = { "/tmp", NULL };
+        const char *equal_strs[] = { "/tmp", ".", NULL };
         // const char* equal_strs[] = {NULL};
         if ( str_equalsAny( orig_file, equal_strs ) ) {
             // Starts with a path we don't care about.
@@ -179,8 +190,8 @@ static int traceBash( pid_t child, pid_t current_pid ) {
         close( fd );
         if ( !isWrite && !file_avail ) {
             // File doesn't exist, and we're not writing we don't care.
-            //TODO run a dep...
-            continue;
+            // TODO run a dep...
+            // continue;
         }
 
         // pr_debug( "WroteFile: orig_file: \"%s\"  resolved: \"%s\"", orig_file, resolved_path );
@@ -196,6 +207,23 @@ int main( int argc, char *argv[] ) {
     //     pr_debug_raw( "%s ", argv[ i ] );
     // }
     // pr_debug_raw( "\n" );
+
+    {
+        char proc_str[ 64 ];
+        char cmdLine[ PATH_MAX ];
+        FILE *proc_file;
+        pid_t parent_pid = getppid( );
+        pr_debug( "Parent pid:%d", parent_pid );
+
+        snprintf( proc_str, PATH_MAX, "/proc/%i/cmdline", parent_pid );
+        proc_file = fopen( proc_str, "r" );
+        fgets( cmdLine, PATH_MAX, proc_file );
+        fclose( proc_file );
+        pr_debug( "Parent cmdline:%s", cmdLine );
+
+        // This can be used to re-exec make.
+        sprintf( proc_str, "/proc/%i/exe", parent_pid );
+    }
 
     int first_cmd = 1;
     if ( strncmp( argv[ 1 ], "-c", 3 ) == 0 ) {

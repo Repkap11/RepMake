@@ -1,14 +1,11 @@
 SHELL = ../out/repshell $@
 
-CPUS ?= $(shell nproc || echo 1)
-
-
-all: example
+all:
 	./example
 
 build: example
 
-example: lib.o example.o
+example:
 	gcc example.o lib.o -o example
 
 example.o:

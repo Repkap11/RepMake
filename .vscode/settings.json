@@ -72,6 +72,7 @@
         "variant": "cpp",
         "format": "cpp",
         "__nullptr": "cpp",
-        "__bit_reference": "cpp"
+        "__bit_reference": "cpp",
+        "ios": "cpp"
     }
 }

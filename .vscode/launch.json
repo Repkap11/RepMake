@@ -5,7 +5,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceRoot}/out/repshell",
-            "args": ["-c", "gcc -c lib.c -o lib.o"],
+            "args": ["-c", "make"],
             "stopAtEntry": false,
             "cwd": "${workspaceRoot}/example",
             "environment": [],
