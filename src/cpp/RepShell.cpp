@@ -232,7 +232,7 @@ std::pair<char *, std::streampos> readEntireFile( const char *inputFile ) {
     return { buffer, fileSize };
 }
 
-bool parseExistingRules( std::set<Rule> &all_rules ) {
+bool parseExistingRules( std::set<Rule> &all_rules, const std::set<std::string> &ignore ) {
     const char *inputFile = ".RepDep";
     auto inputBuffer = readEntireFile( inputFile );
     ANTLRInputStream input( inputBuffer.first, inputBuffer.second );
@@ -252,6 +252,9 @@ bool parseExistingRules( std::set<Rule> &all_rules ) {
     std::vector<RepShellParser::Rep_shell_ruleContext *> parseRules = context->rep_shell_rule( );
     for ( RepShellParser::Rep_shell_ruleContext *const parseRule : parseRules ) {
         std::string rule_name = parseRule->rule_name( )->IDENTIFIER( )->getText( );
+        if ( ignore.find( rule_name ) != ignore.end( ) ) {
+            continue;
+        }
 
         std::set<Rule>::iterator iter = all_rules.find( rule_name );
 
@@ -275,7 +278,11 @@ bool parseExistingRules( std::set<Rule> &all_rules ) {
         if ( parseDepList != NULL ) {
             std::vector<RepShellParser::Rule_nameContext *> parseDeps = parseDepList->rule_name( );
             for ( RepShellParser::Rule_nameContext *parseDep : parseDeps ) {
-                deps->insert( parseDep->IDENTIFIER( )->getText( ) );
+                std::string parseDepName = parseDep->IDENTIFIER( )->getText( );
+                if ( ignore.find( parseDepName ) != ignore.end( ) ) {
+                    continue;
+                }
+                deps->insert( parseDepName );
             }
         }
     }
@@ -383,7 +390,7 @@ int main( int argc, char *argv[] ) {
     ptrace( PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESECCOMP | PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK );
 
     std::set<Rule> all_rules; // TODO parse out previous rules.
-    parseExistingRules( all_rules );
+    parseExistingRules( all_rules, ignore_files );
 
     Rule new_rule( task );
 
@@ -420,7 +427,7 @@ int main( int argc, char *argv[] ) {
             for ( const auto &dep : rule.deps ) {
                 rep_dep_out << " " << dep;
             }
-            rep_dep_out << std::endl << std::endl;
+            rep_dep_out << std::endl;
         }
     }
     rep_dep_out.close( );
