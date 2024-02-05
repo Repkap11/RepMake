@@ -53,6 +53,8 @@ static void runBash( int argc, char *argv[] ) {
         BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_TRACE ),
         // BPF_JUMP( BPF_JMP + BPF_JEQ + BPF_K, SYS_newfstatat, 0, 1 ),
         // BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_TRACE ),
+        BPF_JUMP( BPF_JMP + BPF_JEQ + BPF_K, SYS_unlinkat, 0, 1 ),
+        BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_TRACE ),
         BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_ALLOW ),
     };
     struct sock_fprog prog = {
@@ -138,6 +140,7 @@ static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std
         char orig_file[ PATH_MAX ];
         bool isWrite = false;
         bool isRead = false;
+        bool isDelete = false;
         // if ( syscall == SYS_newfstatat ) {
         //     long dirfd = regs.rdi;
         //     bool isRelativeFile = ( int )dirfd == AT_FDCWD;
@@ -148,7 +151,10 @@ static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std
         //     // pr_debug( "rsi:%s", orig_file );
         //     read_file( current_pid, regs.rsi, orig_file );
         //     isRead = true;
-        if ( syscall == SYS_access ) {
+        if ( syscall == SYS_unlinkat ) {
+            read_file( current_pid, regs.rsi, orig_file );
+            isDelete = true;
+        } else if ( syscall == SYS_access ) {
             read_file( current_pid, regs.rdi, orig_file );
             isRead = true;
         } else if ( syscall == SYS_execve ) {
@@ -199,7 +205,7 @@ static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std
         close( fd );
 
         // pr_debug( "WroteFile: orig_file: \"%s\"  resolved: \"%s\"", orig_file, resolved_path );
-        pr_debug( "Access: r:%d w:%d \"%s\"", isRead, isWrite, orig_file );
+        pr_debug( "Access: r:%d w:%d del:%d \"%s\"", isRead, isWrite, isDelete, orig_file );
         // pr_debug( "" );
         if ( ignore.find( orig_file ) != ignore.end( ) ) {
             // Bad file
@@ -210,6 +216,9 @@ static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std
             }
             if ( new_rules.name.empty( ) && isWrite ) {
                 new_rules.name = orig_file;
+            }
+            if (isDelete){
+                new_rules.deps.erase(orig_file);
             }
         }
     }
