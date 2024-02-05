@@ -18,12 +18,15 @@
 #include <sys/user.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #include <iostream>
 #include <queue>
 #include <set>
 #include <map>
 #include <fstream>
+#include <regex>
+
 #include "utils.hpp"
 #include "logging.hpp"
 #include "rules.hpp"
@@ -105,7 +108,17 @@ static void read_file( pid_t pid, long reg, char *file ) {
     } while ( i == sizeof( long ) );
 }
 
-static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std::set<std::string> &ignore ) {
+bool matchsAnyIgnore( const std::string str, const std::vector<std::regex> &ignore ) {
+    std::smatch match;
+    for ( auto &regex : ignore ) {
+        if ( std::regex_match( str, match, regex ) ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std::vector<std::regex> &ignore ) {
     int status;
     while ( 1 ) {
         ptrace( PTRACE_CONT, current_pid, 0, 0 );
@@ -200,27 +213,36 @@ static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std
             continue;
         }
 
-        int fd = openat( AT_FDCWD, resolved_path, O_RDONLY );
-        bool file_avail = fd >= 0;
-        close( fd );
+        // int fd = openat( AT_FDCWD, resolved_path, O_RDONLY );
+        // bool file_avail = fd >= 0;
+        // close( fd );
+        struct stat statbuf;
+        stat( resolved_path, &statbuf );
+        bool isDir = false;
+        if ( stat( resolved_path, &statbuf ) == 0 ) {
+            isDir = S_ISDIR( statbuf.st_mode );
+        }
+        if ( isDir ) {
+            continue; // I thinik?
+        }
 
         // pr_debug( "WroteFile: orig_file: \"%s\"  resolved: \"%s\"", orig_file, resolved_path );
-        pr_debug( "Access: r:%d w:%d del:%d \"%s\"", isRead, isWrite, isDelete, orig_file );
         // pr_debug( "" );
-        if ( ignore.find( orig_file ) != ignore.end( ) ) {
+        if ( matchsAnyIgnore( orig_file, ignore ) ) {
             // Bad file
             // pr_debug( "Bad file:%s", orig_file );
-        } else {
-            if ( isRead ) {
-                new_rules.deps.insert( orig_file );
-            }
-            if ( new_rules.name.empty( ) && isWrite ) {
-                new_rules.name = orig_file;
-            }
-            if (isDelete){
-                new_rules.deps.erase(orig_file);
-            }
+            continue;
         }
+        if ( isRead ) {
+            new_rules.deps.insert( orig_file );
+        }
+        if ( new_rules.name.empty( ) && isWrite ) {
+            new_rules.name = orig_file;
+        }
+        if ( isDelete ) {
+            new_rules.deps.erase( orig_file );
+        }
+        pr_debug( "Access: r:%d w:%d del:%d dir:%d \"%s\"", isRead, isWrite, isDelete, isDir, orig_file );
     }
     // pr_debug( "Exiting loop" );
 }
@@ -241,7 +263,7 @@ std::pair<char *, std::streampos> readEntireFile( const char *inputFile ) {
     return { buffer, fileSize };
 }
 
-bool parseExistingRules( std::set<Rule> &all_rules, const std::set<std::string> &ignore ) {
+bool parseExistingRules( std::set<Rule> &all_rules, const std::vector<std::regex> &ignore ) {
     const char *inputFile = ".RepDep";
     auto inputBuffer = readEntireFile( inputFile );
     ANTLRInputStream input( inputBuffer.first, inputBuffer.second );
@@ -261,7 +283,7 @@ bool parseExistingRules( std::set<Rule> &all_rules, const std::set<std::string> 
     std::vector<RepShellParser::Rep_shell_ruleContext *> parseRules = context->rep_shell_rule( );
     for ( RepShellParser::Rep_shell_ruleContext *const parseRule : parseRules ) {
         std::string rule_name = parseRule->rule_name( )->IDENTIFIER( )->getText( );
-        if ( ignore.find( rule_name ) != ignore.end( ) ) {
+        if ( matchsAnyIgnore( rule_name, ignore ) ) {
             continue;
         }
 
@@ -288,7 +310,7 @@ bool parseExistingRules( std::set<Rule> &all_rules, const std::set<std::string> 
             std::vector<RepShellParser::Rule_nameContext *> parseDeps = parseDepList->rule_name( );
             for ( RepShellParser::Rule_nameContext *parseDep : parseDeps ) {
                 std::string parseDepName = parseDep->IDENTIFIER( )->getText( );
-                if ( ignore.find( parseDepName ) != ignore.end( ) ) {
+                if ( matchsAnyIgnore( parseDepName, ignore ) ) {
                     continue;
                 }
                 deps->insert( parseDepName );
@@ -322,7 +344,7 @@ int main( int argc, char *argv[] ) {
     //     sprintf( proc_str, "/proc/%i/exe", parent_pid );
     // }
 
-    std::set<std::string> ignore_files;
+    std::vector<std::regex> ignore_files;
     bool pendingDashTask = false;
     bool pendingDashIgnore = false;
     bool pendingDashShell = false;
@@ -340,7 +362,8 @@ int main( int argc, char *argv[] ) {
             task = arg;
             pendingDashTask = false;
         } else if ( pendingDashIgnore ) {
-            ignore_files.emplace( arg );
+            // pr_debug( "Ignore:%s", arg );
+            ignore_files.emplace_back( arg );
             pendingDashIgnore = false;
         } else if ( pendingDashShell ) {
             shell = arg;
