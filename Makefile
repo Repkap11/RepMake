@@ -17,7 +17,7 @@ CFLAGS_CPP = -Wall -Werror -Wextra -std=c++11 -Wno-unused-parameter -Wno-unused-
 # CFLAGS_ANTLR += -O3
 # CFLAGS_CPP += -O3
 CFLAGS_ANTLR += -g
-CFLAGS_CPP += -g -Og
+CFLAGS_CPP += -g
 # 
 
 OBJECTS = \
@@ -36,7 +36,7 @@ all: out/$(TARGET)
 
 dev: out/$(TARGET)
 	@cd example && make
-
+	
 install:
 	sudo apt-get install antlr4
 
@@ -95,3 +95,6 @@ AFTER_VARS := $(.VARIABLES)
 nothing:
 
 # $(info Val: [$(DEPS)])
+
+#strace -ff gcc -c lib.c -o lib.o -I inc1 -I inc2 2>&1 | grep -A 5 -E "example.o|header1|header2|lib.o"
+#strace -ff gcc example.o lib.o -o example 2>&1 | grep -E "lib.o|example.o"

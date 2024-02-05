@@ -30,6 +30,7 @@
 #include "utils.hpp"
 #include "logging.hpp"
 #include "rules.hpp"
+#include "sys_map.hpp"
 
 #include "RepShellLexer.h"
 #include "RepShellParser.h"
@@ -52,8 +53,8 @@ static void runBash( int argc, char *argv[] ) {
         BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_TRACE ),
         BPF_JUMP( BPF_JMP + BPF_JEQ + BPF_K, SYS_openat, 0, 1 ),
         BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_TRACE ),
-        // BPF_JUMP( BPF_JMP + BPF_JEQ + BPF_K, SYS_access, 0, 1 ),
-        // BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_TRACE ),
+        BPF_JUMP( BPF_JMP + BPF_JEQ + BPF_K, SYS_access, 0, 1 ),
+        BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_TRACE ),
         BPF_JUMP( BPF_JMP + BPF_JEQ + BPF_K, SYS_execve, 0, 1 ),
         BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_TRACE ),
         // BPF_JUMP( BPF_JMP + BPF_JEQ + BPF_K, SYS_newfstatat, 0, 1 ),
@@ -120,8 +121,32 @@ bool matchsAnyIgnore( const std::string str, const std::vector<std::regex> &igno
     return false;
 }
 
+long waitForSyscallRet( pid_t current_pid ) {
+    int status;
+    long syscall_ret = 42;
+    {
+        if ( ptrace( PTRACE_SINGLESTEP, current_pid, 0, 0 ) < 0 ) {
+            pr_debug( "ptrace" );
+            exit( 1 );
+            return 1;
+        }
+        waitpid( current_pid, &status, 0 );
+        struct user_regs_struct regs;
+        if ( ptrace( PTRACE_GETREGS, current_pid, 0, &regs ) == -1 ) {
+            if ( errno == ESRCH ) {
+                pr_debug( "Child is exiting:%d: %s", errno, strerror( errno ) );
+            } else {
+                pr_debug( "Get Regs Error %d: %s", errno, strerror( errno ) );
+            }
+        }
+        syscall_ret = regs.rax;
+    }
+    return syscall_ret;
+}
+
 static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std::vector<std::regex> &ignore ) {
     int status;
+    const char **sysmap = getSysMap( );
     std::map<long, std::string> fd_path_map;
     while ( 1 ) {
         ptrace( PTRACE_CONT, current_pid, 0, 0 );
@@ -155,10 +180,10 @@ static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std
         long syscall = regs.orig_rax;
 
         bool hasPathAddr = false;
-        long pathAddr;
+        long pathAddr = -1;
 
         bool hasFd = false;
-        long fdValue;
+        long fdValue = -1;
 
         bool addFileAsDep = false;
         bool removeFileAsDep = false;
@@ -182,7 +207,10 @@ static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std
             hasFd = true;
             fdValue = regs.rdi;
             addFileAsDep = true;
-            continue;
+        } else if ( syscall == SYS_access ) {
+            hasPathAddr = true;
+            pathAddr = regs.rdi;
+            addFileAsDep = true;
         } else if ( syscall == SYS_openat ) {
             bool isRelativeFile = ( int )regs.rdi == AT_FDCWD;
             if ( !isRelativeFile ) {
@@ -229,79 +257,68 @@ static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std
                 orig_file = iter->second;
             }
         }
+        // pr_debug( "Got file:%ld %s", fdValue, orig_file.c_str( ) );
         if ( orig_file.empty( ) ) {
             // We don't know what this is
-            pr_debug( "Dont know" );
+            // pr_debug( "Dont know" );
             continue;
         }
-
-        // char resolved_path[ PATH_MAX ];
-        // realpath( orig_file, resolved_path );
-        // const char *prefix_strs[] = { "/tmp/", "/usr/", "/etc/", "/lib/", "/dev/", "/sys/", "/proc/", "/run/", "/snap/", NULL };
-        std::vector<std::string> prefix_strs = { "/" }; // any nont relative files.
-        // const char* prefix_strs[] = {NULL};
-        if ( str_startsWith( orig_file, prefix_strs ) ) {
-            // Starts with a path we don't care about.
-            continue;
-        }
-        std::vector<std::string> equal_strs = { "/tmp", "." };
-        // const char* equal_strs[] = {NULL};
-        if ( str_equalsAny( orig_file, equal_strs ) ) {
-            // Starts with a path we don't care about.
-            continue;
-        }
-        // pr_debug( "WroteFile: orig_file: \"%s\"  resolved: \"%s\"", orig_file, resolved_path );
-        // pr_debug( "" );
-        if ( matchsAnyIgnore( orig_file, ignore ) ) {
-            // Bad file
-            // pr_debug( "Bad file:%s", orig_file );
-            continue;
-        }
-
-        // int fd = openat( AT_FDCWD, resolved_path, O_RDONLY );
-        // bool file_avail = fd >= 0;
-        // close( fd );
-        struct stat statbuf;
         bool isDir = false;
-        if ( stat( orig_file.c_str( ), &statbuf ) == 0 ) {
-            isDir = S_ISDIR( statbuf.st_mode );
-        }
-        if ( isDir ) {
-            continue; // I thinik?
+        if ( true ) {
+            // char resolved_path[ PATH_MAX ];
+            // realpath( orig_file, resolved_path );
+            // const char *prefix_strs[] = { "/tmp/", "/usr/", "/etc/", "/lib/", "/dev/", "/sys/", "/proc/", "/run/", "/snap/", NULL };
+            std::vector<std::string> prefix_strs = { "/" }; // any nont relative files.
+            // const char* prefix_strs[] = {NULL};
+            if ( str_startsWith( orig_file, prefix_strs ) ) {
+                // Starts with a path we don't care about.
+                continue;
+            }
+            std::vector<std::string> equal_strs = { "/tmp", "." };
+            // const char* equal_strs[] = {NULL};
+            if ( str_equalsAny( orig_file, equal_strs ) ) {
+                // Starts with a path we don't care about.
+                continue;
+            }
+            // pr_debug( "WroteFile: orig_file: \"%s\"  resolved: \"%s\"", orig_file, resolved_path );
+            // pr_debug( "" );
+            if ( matchsAnyIgnore( orig_file, ignore ) ) {
+                // Bad file
+                // pr_debug( "Bad file:%s", orig_file );
+                continue;
+            }
+
+            // int fd = openat( AT_FDCWD, resolved_path, O_RDONLY );
+            // bool file_avail = fd >= 0;
+            // close( fd );
+            struct stat statbuf;
+            isDir = false;
+            if ( stat( orig_file.c_str( ), &statbuf ) == 0 ) {
+                isDir = S_ISDIR( statbuf.st_mode );
+            }
+            if ( isDir ) {
+                continue; // I thinik?
+            }
         }
 
         if ( trackFile ) {
-            fd_path_map[ fdValue ] = orig_file;
+            long syscall_ret = waitForSyscallRet( current_pid );
+            // pr_debug( "Tracking:%ld: %s", syscall_ret, orig_file.c_str( ) );
+            fd_path_map[ syscall_ret ] = orig_file;
         }
-        if ( addFileAsDep ) {
-            new_rules.deps.insert( orig_file );
-        }
-        if ( removeFileAsDep ) {
-            new_rules.deps.erase( orig_file );
-        }
-
         if ( mayBeTarget && new_rules.name.empty( ) ) {
             new_rules.name = orig_file;
         }
-        // long syscall_ret = 42;
-        // {
-        //     if ( ptrace( PTRACE_SINGLESTEP, current_pid, 0, 0 ) < 0 ) {
-        //         pr_debug( "ptrace" );
-        //         exit( 1 );
-        //         return 1;
-        //     }
-        //     waitpid( current_pid, &status, 0 );
-        //     struct user_regs_struct regs;
-        //     if ( ptrace( PTRACE_GETREGS, current_pid, 0, &regs ) == -1 ) {
-        //         if ( errno == ESRCH ) {
-        //             pr_debug( "Child is exiting:%d: %s", errno, strerror( errno ) );
-        //         } else {
-        //             pr_debug( "Get Regs Error %d: %s", errno, strerror( errno ) );
-        //         }
-        //     }
-        //     syscall_ret = regs.rax;
-        // }
 
+        if ( removeFileAsDep ) {
+            new_rules.deps.erase( orig_file );
+        }
+        if ( addFileAsDep ) {
+            bool actuallyInserted = new_rules.deps.insert( orig_file ).second;
+            if ( !actuallyInserted ) {
+                continue;
+            }
+        }
         // if ( isRead ) {
         //     new_rules.deps.insert( orig_file );
         // }
@@ -309,9 +326,8 @@ static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std
         // if ( isDelete ) {
         //     new_rules.deps.erase( orig_file );
         // }
-        pr_debug( "Access: track:%d add:%d remove:%d dir:%d \"%s\"", trackFile, addFileAsDep, removeFileAsDep, isDir, orig_file.c_str( ) );
+        pr_debug( "Access: track:%d add:%d remove:%d dir:%d %s \"%s\"", trackFile, addFileAsDep, removeFileAsDep, isDir, sysmap[ syscall ], orig_file.c_str( ) );
     }
-    // pr_debug( "Exiting loop" );
 }
 
 std::pair<char *, std::streampos> readEntireFile( const char *inputFile ) {
