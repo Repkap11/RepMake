@@ -1,8 +1,9 @@
 SHELL = ../out/RepShell --task $@ --
--include .RepDep
 
 all:
 	./example
+
+-include .RepDep
 
 build: example
 
@@ -14,3 +15,6 @@ example.o:
 
 lib.o:
 	gcc -c lib.c -o lib.o
+
+clean:
+	rm -f *.o example

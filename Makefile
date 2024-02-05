@@ -12,7 +12,7 @@ MAKEFLAGS += --no-builtin-rules
 
 # Use -Wno-attributes due to an antlr bug https://github.com/antlr/antlr4/issues/3217
 CFLAGS_ANTLR = -std=c++11 -Wno-attributes
-CFLAGS_CPP = -Wall -Werror -Wextra -std=c++11 -Wno-unused-parameter -Wno-unused-variable -Wno-attributes -Wno-unused-function
+CFLAGS_CPP = -Wall -Werror -Wextra -std=c++11 -Wno-unused-parameter -Wno-unused-variable -Wno-attributes -Wno-unused-function -Wno-overloaded-virtual
 
 # CFLAGS_ANTLR += -O3
 # CFLAGS_CPP += -O3

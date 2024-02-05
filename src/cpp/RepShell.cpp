@@ -28,6 +28,13 @@
 #include "logging.hpp"
 #include "rules.hpp"
 
+#include "RepShellLexer.h"
+#include "RepShellParser.h"
+#include "antlr4-runtime.h"
+
+using namespace antlr4;
+using namespace antlr4::tree;
+
 static void runBash( int argc, char *argv[] ) {
     // pr_debug_raw( "Bash args: " );
     // for ( int i = 0; i < argc; i++ ) {
@@ -191,15 +198,87 @@ static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules ) {
         bool file_avail = fd >= 0;
         close( fd );
 
-        if ( isRead ) {
-            new_rules.deps.insert( orig_file );
-        }
-
         // pr_debug( "WroteFile: orig_file: \"%s\"  resolved: \"%s\"", orig_file, resolved_path );
         pr_debug( "Access: r:%d w:%d \"%s\"", isRead, isWrite, orig_file );
         // pr_debug( "" );
+        if ( isRead ) {
+            if ( strcmp( "libgcc_s.so.1", orig_file ) == 0 ) {
+                // Bad dep
+            } else {
+                new_rules.deps.insert( orig_file );
+            }
+        }
+        if (new_rules.name.empty() && isWrite){
+            new_rules.name = orig_file;
+        }
     }
     // pr_debug( "Exiting loop" );
+}
+
+std::pair<char *, std::streampos> readEntireFile( const char *inputFile ) {
+    std::ifstream stream;
+    stream.open( inputFile );
+    stream.seekg( 0, std::ios::end );
+    std::streampos fileSize = stream.tellg( );
+    fileSize += 1;
+    stream.seekg( 0, std::ios::beg );
+
+    char *buffer = new char[ fileSize ];
+    // Add a new line since i couldn't figure out how to write my rule without needing start of line token.
+    // Use \n instead of \n so it doesn't offset the line count (kinda hacky, but works).
+    buffer[ 0 ] = '\r';
+    stream.read( &buffer[ 1 ], fileSize );
+    return { buffer, fileSize };
+}
+
+bool parseExistingRules( std::set<Rule> &all_rules ) {
+    const char *inputFile = ".RepDep";
+    auto inputBuffer = readEntireFile( inputFile );
+    ANTLRInputStream input( inputBuffer.first, inputBuffer.second );
+    delete[] inputBuffer.first;
+    input.name = inputFile;
+    RepShellLexer lexer( &input );
+    CommonTokenStream tokens( &lexer );
+    RepShellParser parser( &tokens );
+    if ( parser.getNumberOfSyntaxErrors( ) != 0 ) {
+        return 1;
+    }
+    auto context = parser.repshell( );
+    if ( parser.repshell( ) == NULL ) {
+        return 1;
+    }
+
+    std::vector<RepShellParser::Rep_shell_ruleContext *> parseRules = context->rep_shell_rule( );
+    for ( RepShellParser::Rep_shell_ruleContext *const parseRule : parseRules ) {
+        std::string rule_name = parseRule->rule_name( )->IDENTIFIER( )->getText( );
+
+        std::set<Rule>::iterator iter = all_rules.find( rule_name );
+
+        std::set<std::string> *deps;
+        if ( iter != all_rules.end( ) ) {
+            // Already exists in rules, add the deps we found, if any.
+            const Rule &previous_rule = *iter;
+            // Cast away const since the deps of a rules don't impact the hash of the item in the set.
+            Rule &editable_rules = const_cast<Rule &>( previous_rule );
+            deps = &editable_rules.deps;
+        } else {
+            // Rule is new, add it to the set;
+            auto it = all_rules.emplace( rule_name );
+            const Rule &emplaced_rule = *it.first;
+            // Cast away const since the deps of a rules don't impact the hash of the item in the set.
+            Rule &editable_rules = const_cast<Rule &>( emplaced_rule );
+            deps = &editable_rules.deps;
+        }
+
+        auto parseDepList = parseRule->dependency_list( );
+        if ( parseDepList != NULL ) {
+            std::vector<RepShellParser::Rule_nameContext *> parseDeps = parseDepList->rule_name( );
+            for ( RepShellParser::Rule_nameContext *parseDep : parseDeps ) {
+                deps->insert( parseDep->IDENTIFIER( )->getText( ) );
+            }
+        }
+    }
+    return 0;
 }
 
 int main( int argc, char *argv[] ) {
@@ -278,6 +357,8 @@ int main( int argc, char *argv[] ) {
     ptrace( PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESECCOMP | PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK );
 
     std::set<Rule> all_rules; // TODO parse out previous rules.
+    parseExistingRules( all_rules );
+
     Rule new_rule( task );
 
     int ret = traceBash( pid, pid, new_rule );

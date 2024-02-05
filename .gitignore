@@ -1,2 +1,4 @@
 out
 src/antlr/.antlr/
+example/*.o
+example/example
