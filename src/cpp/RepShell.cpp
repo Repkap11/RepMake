@@ -48,10 +48,12 @@ static void runBash( int argc, char *argv[] ) {
     /* If open syscall, trace */
     struct sock_filter filter[] = {
         BPF_STMT( BPF_LD + BPF_W + BPF_ABS, offsetof( struct seccomp_data, nr ) ),
+        BPF_JUMP( BPF_JMP + BPF_JEQ + BPF_K, SYS_read, 0, 1 ),
+        BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_TRACE ),
         BPF_JUMP( BPF_JMP + BPF_JEQ + BPF_K, SYS_openat, 0, 1 ),
         BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_TRACE ),
-        BPF_JUMP( BPF_JMP + BPF_JEQ + BPF_K, SYS_access, 0, 1 ),
-        BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_TRACE ),
+        // BPF_JUMP( BPF_JMP + BPF_JEQ + BPF_K, SYS_access, 0, 1 ),
+        // BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_TRACE ),
         BPF_JUMP( BPF_JMP + BPF_JEQ + BPF_K, SYS_execve, 0, 1 ),
         BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_TRACE ),
         // BPF_JUMP( BPF_JMP + BPF_JEQ + BPF_K, SYS_newfstatat, 0, 1 ),
@@ -120,6 +122,7 @@ bool matchsAnyIgnore( const std::string str, const std::vector<std::regex> &igno
 
 static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std::vector<std::regex> &ignore ) {
     int status;
+    std::map<long, std::string> fd_path_map;
     while ( 1 ) {
         ptrace( PTRACE_CONT, current_pid, 0, 0 );
 
@@ -150,82 +153,103 @@ static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std
             }
         }
         long syscall = regs.orig_rax;
-        char orig_file[ PATH_MAX ];
-        bool isWrite = false;
-        bool isRead = false;
-        bool isDelete = false;
-        // if ( syscall == SYS_newfstatat ) {
-        //     long dirfd = regs.rdi;
-        //     bool isRelativeFile = ( int )dirfd == AT_FDCWD;
-        //     if ( !isRelativeFile ) {
-        //         // Not a relitive path, it's something strange give up.
-        //         continue;
-        //     }
-        //     // pr_debug( "rsi:%s", orig_file );
-        //     read_file( current_pid, regs.rsi, orig_file );
-        //     isRead = true;
+
+        bool hasPathAddr = false;
+        long pathAddr;
+
+        bool hasFd = false;
+        long fdValue;
+
+        bool addFileAsDep = false;
+        bool removeFileAsDep = false;
+        bool trackFile = false;
+        bool unTrackFile = false;
+
+        bool mayBeTarget = false;
+
         if ( syscall == SYS_unlinkat ) {
-            read_file( current_pid, regs.rsi, orig_file );
-            isDelete = true;
-        } else if ( syscall == SYS_access ) {
-            read_file( current_pid, regs.rdi, orig_file );
-            isRead = true;
+            hasPathAddr = true;
+            pathAddr = regs.rsi;
         } else if ( syscall == SYS_execve ) {
-            read_file( current_pid, regs.rdi, orig_file );
-            isRead = true;
+            hasPathAddr = true;
+            pathAddr = regs.rdi;
+            addFileAsDep = true;
+            // } else if ( syscall == SYS_close ) {
+            //     hasFd = true;
+            //     fdValue = regs.rdi;
+            //     unTrackFile = true;
+        } else if ( syscall == SYS_read ) {
+            hasFd = true;
+            fdValue = regs.rdi;
+            addFileAsDep = true;
+            continue;
         } else if ( syscall == SYS_openat ) {
-            long dirfd = regs.rdi;
-            long flags = regs.rdx;
-            bool isRelativeFile = ( int )dirfd == AT_FDCWD;
+            bool isRelativeFile = ( int )regs.rdi == AT_FDCWD;
             if ( !isRelativeFile ) {
                 // Not a relitive path, it's something strange give up.
                 continue;
             }
+            hasPathAddr = true;
+            pathAddr = regs.rsi;
+
+            long flags = regs.rdx;
             // char flags_str[1024];
             // flagsToString(flags, flags_str, sizeof(flags_str));
             if ( ( flags & O_ACCMODE ) == O_RDONLY ) {
-                isRead = true;
+                // isRead = true;
+                // doTrackFD = true;
+                trackFile = true;
             } else if ( ( flags & O_ACCMODE ) == O_WRONLY ) {
-                isWrite = true;
+                mayBeTarget = true;
             } else if ( ( flags & O_ACCMODE ) == O_RDWR ) {
-                isWrite = true;
-                isRead = true;
+                mayBeTarget = true;
+                trackFile = true;
             }
-            read_file( current_pid, regs.rsi, orig_file );
         } else {
             // Some other syscall, we don't care.
             continue;
         }
+        // if ( trackFile && unTrackFile ) {
+        //     pr_debug( "Can't track and untrack" );
+        //     exit( 1 );
+        // }
+        if ( hasPathAddr && hasFd ) {
+            pr_debug( "Not expected to have both parts of file" );
+            exit( 1 );
+        }
+        std::string orig_file;
+        if ( hasPathAddr ) {
+            char orig_file_from_addr[ PATH_MAX ];
+            read_file( current_pid, pathAddr, orig_file_from_addr );
+            orig_file = orig_file_from_addr;
+        }
+        if ( hasFd ) {
+            auto iter = fd_path_map.find( fdValue );
+            if ( iter != fd_path_map.end( ) ) {
+                orig_file = iter->second;
+            }
+        }
+        if ( orig_file.empty( ) ) {
+            // We don't know what this is
+            pr_debug( "Dont know" );
+            continue;
+        }
 
-        char resolved_path[ PATH_MAX ];
-        realpath( orig_file, resolved_path );
+        // char resolved_path[ PATH_MAX ];
+        // realpath( orig_file, resolved_path );
         // const char *prefix_strs[] = { "/tmp/", "/usr/", "/etc/", "/lib/", "/dev/", "/sys/", "/proc/", "/run/", "/snap/", NULL };
-        const char *prefix_strs[] = { "/", NULL }; // any nont relative files.
+        std::vector<std::string> prefix_strs = { "/" }; // any nont relative files.
         // const char* prefix_strs[] = {NULL};
         if ( str_startsWith( orig_file, prefix_strs ) ) {
             // Starts with a path we don't care about.
             continue;
         }
-        const char *equal_strs[] = { "/tmp", ".", NULL };
+        std::vector<std::string> equal_strs = { "/tmp", "." };
         // const char* equal_strs[] = {NULL};
         if ( str_equalsAny( orig_file, equal_strs ) ) {
             // Starts with a path we don't care about.
             continue;
         }
-
-        // int fd = openat( AT_FDCWD, resolved_path, O_RDONLY );
-        // bool file_avail = fd >= 0;
-        // close( fd );
-        struct stat statbuf;
-        stat( resolved_path, &statbuf );
-        bool isDir = false;
-        if ( stat( resolved_path, &statbuf ) == 0 ) {
-            isDir = S_ISDIR( statbuf.st_mode );
-        }
-        if ( isDir ) {
-            continue; // I thinik?
-        }
-
         // pr_debug( "WroteFile: orig_file: \"%s\"  resolved: \"%s\"", orig_file, resolved_path );
         // pr_debug( "" );
         if ( matchsAnyIgnore( orig_file, ignore ) ) {
@@ -233,16 +257,59 @@ static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std
             // pr_debug( "Bad file:%s", orig_file );
             continue;
         }
-        if ( isRead ) {
+
+        // int fd = openat( AT_FDCWD, resolved_path, O_RDONLY );
+        // bool file_avail = fd >= 0;
+        // close( fd );
+        struct stat statbuf;
+        bool isDir = false;
+        if ( stat( orig_file.c_str( ), &statbuf ) == 0 ) {
+            isDir = S_ISDIR( statbuf.st_mode );
+        }
+        if ( isDir ) {
+            continue; // I thinik?
+        }
+
+        if ( trackFile ) {
+            fd_path_map[ fdValue ] = orig_file;
+        }
+        if ( addFileAsDep ) {
             new_rules.deps.insert( orig_file );
         }
-        if ( new_rules.name.empty( ) && isWrite ) {
-            new_rules.name = orig_file;
-        }
-        if ( isDelete ) {
+        if ( removeFileAsDep ) {
             new_rules.deps.erase( orig_file );
         }
-        pr_debug( "Access: r:%d w:%d del:%d dir:%d \"%s\"", isRead, isWrite, isDelete, isDir, orig_file );
+
+        if ( mayBeTarget && new_rules.name.empty( ) ) {
+            new_rules.name = orig_file;
+        }
+        // long syscall_ret = 42;
+        // {
+        //     if ( ptrace( PTRACE_SINGLESTEP, current_pid, 0, 0 ) < 0 ) {
+        //         pr_debug( "ptrace" );
+        //         exit( 1 );
+        //         return 1;
+        //     }
+        //     waitpid( current_pid, &status, 0 );
+        //     struct user_regs_struct regs;
+        //     if ( ptrace( PTRACE_GETREGS, current_pid, 0, &regs ) == -1 ) {
+        //         if ( errno == ESRCH ) {
+        //             pr_debug( "Child is exiting:%d: %s", errno, strerror( errno ) );
+        //         } else {
+        //             pr_debug( "Get Regs Error %d: %s", errno, strerror( errno ) );
+        //         }
+        //     }
+        //     syscall_ret = regs.rax;
+        // }
+
+        // if ( isRead ) {
+        //     new_rules.deps.insert( orig_file );
+        // }
+
+        // if ( isDelete ) {
+        //     new_rules.deps.erase( orig_file );
+        // }
+        pr_debug( "Access: track:%d add:%d remove:%d dir:%d \"%s\"", trackFile, addFileAsDep, removeFileAsDep, isDir, orig_file.c_str( ) );
     }
     // pr_debug( "Exiting loop" );
 }

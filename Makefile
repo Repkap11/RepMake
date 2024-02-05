@@ -17,7 +17,7 @@ CFLAGS_CPP = -Wall -Werror -Wextra -std=c++11 -Wno-unused-parameter -Wno-unused-
 # CFLAGS_ANTLR += -O3
 # CFLAGS_CPP += -O3
 CFLAGS_ANTLR += -g
-CFLAGS_CPP += -g
+CFLAGS_CPP += -g -Og
 # 
 
 OBJECTS = \
