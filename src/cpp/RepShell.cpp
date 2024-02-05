@@ -103,7 +103,7 @@ static void read_file( pid_t pid, long reg, char *file ) {
     } while ( i == sizeof( long ) );
 }
 
-static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules ) {
+static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std::set<std::string> &ignore ) {
     int status;
     while ( 1 ) {
         ptrace( PTRACE_CONT, current_pid, 0, 0 );
@@ -201,15 +201,16 @@ static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules ) {
         // pr_debug( "WroteFile: orig_file: \"%s\"  resolved: \"%s\"", orig_file, resolved_path );
         pr_debug( "Access: r:%d w:%d \"%s\"", isRead, isWrite, orig_file );
         // pr_debug( "" );
-        if ( isRead ) {
-            if ( strcmp( "libgcc_s.so.1", orig_file ) == 0 ) {
-                // Bad dep
-            } else {
+        if ( ignore.find( orig_file ) != ignore.end( ) ) {
+            // Bad file
+            // pr_debug( "Bad file:%s", orig_file );
+        } else {
+            if ( isRead ) {
                 new_rules.deps.insert( orig_file );
             }
-        }
-        if ( new_rules.name.empty( ) && isWrite ) {
-            new_rules.name = orig_file;
+            if ( new_rules.name.empty( ) && isWrite ) {
+                new_rules.name = orig_file;
+            }
         }
     }
     // pr_debug( "Exiting loop" );
@@ -305,7 +306,9 @@ int main( int argc, char *argv[] ) {
     //     sprintf( proc_str, "/proc/%i/exe", parent_pid );
     // }
 
+    std::set<std::string> ignore_files;
     bool pendingDashTask = false;
+    bool pendingDashIgnore = false;
     bool foundArgEndMarker = false;
     const char *task = NULL;
     int i;
@@ -317,8 +320,17 @@ int main( int argc, char *argv[] ) {
             break;
         } else if ( pendingDashTask ) {
             task = arg;
-        } else if ( strncmp( "--task", arg, 7 ) == 0 ) {
+            pendingDashTask = false;
+        } else if ( pendingDashIgnore ) {
+            ignore_files.emplace( arg );
+            pendingDashIgnore = false;
+        } else if ( strcmp( "--task", arg ) == 0 ) {
+            pendingDashIgnore = false;
             pendingDashTask = true;
+        } else if ( strcmp( "--ignore", arg ) == 0 ) {
+            pendingDashIgnore = true;
+            pendingDashTask = false;
+
         } else {
             pr_debug( "Unexpected arg:%s", arg );
             return 1;
@@ -346,7 +358,7 @@ int main( int argc, char *argv[] ) {
         std::cout << "Fork error" << std::endl;
     }
     if ( pid == 0 ) {
-        char *cmd = strdup( "/usr/bin/bash" );
+        char *cmd = strdup( "bash" );
 
         argv[ argEndMarker ] = cmd;
         runBash( argc - argEndMarker, &argv[ argEndMarker ] );
@@ -362,7 +374,7 @@ int main( int argc, char *argv[] ) {
 
     Rule new_rule( task );
 
-    int ret = traceBash( pid, pid, new_rule );
+    int ret = traceBash( pid, pid, new_rule, ignore_files );
 
     new_rule.deps.erase( new_rule.name ); // Don't set a rule depend on itself.
 

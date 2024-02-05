@@ -1,5 +1,5 @@
-SHELL = ../out/RepShell --task $@ --
-p
+SHELL = ../out/RepShell --ignore libgcc_s.so.1 --task $@  --
+
 all:
 	./example
 
