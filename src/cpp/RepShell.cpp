@@ -309,8 +309,10 @@ int main( int argc, char *argv[] ) {
     std::set<std::string> ignore_files;
     bool pendingDashTask = false;
     bool pendingDashIgnore = false;
+    bool pendingDashShell = false;
     bool foundArgEndMarker = false;
     const char *task = NULL;
+    const char *shell = NULL;
     int i;
     for ( i = 1; i < argc; i++ ) {
         const char *arg = argv[ i ];
@@ -324,12 +326,21 @@ int main( int argc, char *argv[] ) {
         } else if ( pendingDashIgnore ) {
             ignore_files.emplace( arg );
             pendingDashIgnore = false;
+        } else if ( pendingDashShell ) {
+            shell = arg;
+            pendingDashShell = false;
         } else if ( strcmp( "--task", arg ) == 0 ) {
             pendingDashIgnore = false;
             pendingDashTask = true;
+            pendingDashShell = false;
+        } else if ( strcmp( "--shell", arg ) == 0 ) {
+            pendingDashIgnore = false;
+            pendingDashTask = false;
+            pendingDashShell = true;
         } else if ( strcmp( "--ignore", arg ) == 0 ) {
             pendingDashIgnore = true;
             pendingDashTask = false;
+            pendingDashShell = false;
 
         } else {
             pr_debug( "Unexpected arg:%s", arg );
@@ -352,17 +363,19 @@ int main( int argc, char *argv[] ) {
     } else {
         pr_debug( "Traceing task: %s", task );
     }
+    if ( shell == NULL ) {
+        shell = "bash";
+    }
 
     pid_t pid = fork( );
     if ( pid == -1 ) {
         std::cout << "Fork error" << std::endl;
     }
     if ( pid == 0 ) {
-        char *cmd = strdup( "bash" );
-
-        argv[ argEndMarker ] = cmd;
+        char *shell_copy = strdup( shell );
+        argv[ argEndMarker ] = shell_copy;
         runBash( argc - argEndMarker, &argv[ argEndMarker ] );
-        free( cmd );
+        free( shell_copy );
         exit( 0 );
     }
     int status;
