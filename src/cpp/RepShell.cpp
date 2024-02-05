@@ -208,7 +208,7 @@ static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules ) {
                 new_rules.deps.insert( orig_file );
             }
         }
-        if (new_rules.name.empty() && isWrite){
+        if ( new_rules.name.empty( ) && isWrite ) {
             new_rules.name = orig_file;
         }
     }
@@ -336,6 +336,7 @@ int main( int argc, char *argv[] ) {
 
     if ( task == NULL ) {
         pr_debug( "Traceing Unknown" );
+        task = "";
     } else {
         pr_debug( "Traceing task: %s", task );
     }
@@ -379,11 +380,23 @@ int main( int argc, char *argv[] ) {
 
     std::ofstream rep_dep_out( ".RepDep" );
     for ( const Rule &rule : all_rules ) {
-        rep_dep_out << rule.name << ":";
-        for ( const auto &dep : rule.deps ) {
-            rep_dep_out << " " << dep;
+        if ( rule.deps.size( ) == 0 ) {
+            continue;
         }
-        rep_dep_out << std::endl << std::endl;
+        if ( rule.name.empty( ) ) {
+
+            pr_debug_raw( "Empty: " );
+            for ( const auto &dep : rule.deps ) {
+                pr_debug_raw( "%s ", dep.c_str( ) );
+            }
+            pr_debug( "" );
+        } else {
+            rep_dep_out << rule.name << ":";
+            for ( const auto &dep : rule.deps ) {
+                rep_dep_out << " " << dep;
+            }
+            rep_dep_out << std::endl << std::endl;
+        }
     }
     rep_dep_out.close( );
 

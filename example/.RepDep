@@ -1,7 +1,5 @@
 all: ./example
 
-clean:
-
 example: example.o lib.o
 
 example.o: example.c

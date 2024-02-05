@@ -84,10 +84,8 @@ out/$(TARGET): $(OBJECTS)
 .PRECIOUS: out/$(TARGET) $(OBJECTS)
 
 clean-example:
-	rm -f example/example
-	rm -f example/*.o
-# sleep 1
-# touch example/*.c
+	@cd example && make clean
+	rm example/.RepDep
 
 vars:
 	@echo "$(BEFORE_VARS) $(AFTER_VARS)" | xargs -n1 | sort | uniq -u

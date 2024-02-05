@@ -1,5 +1,5 @@
 SHELL = ../out/RepShell --task $@ --
-
+p
 all:
 	./example
 
