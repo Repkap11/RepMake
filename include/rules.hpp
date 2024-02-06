@@ -8,7 +8,8 @@ class Rule {
         : name( name ) {
     }
     std::string name;
-    std::set<std::string> deps;
+    std::set<std::string> real_deps;
+    std::set<std::string> sus_deps;
     bool operator==( const Rule &otherRule ) const {
         return this->name == otherRule.name;
     }

@@ -305,16 +305,18 @@ static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std
             long syscall_ret = waitForSyscallRet( current_pid );
             // pr_debug( "Tracking:%ld: %s", syscall_ret, orig_file.c_str( ) );
             fd_path_map[ syscall_ret ] = orig_file;
+            new_rules.sus_deps.insert( orig_file ).second;
         }
         if ( mayBeTarget && new_rules.name.empty( ) ) {
             new_rules.name = orig_file;
         }
 
         if ( removeFileAsDep ) {
-            new_rules.deps.erase( orig_file );
+            new_rules.real_deps.erase( orig_file );
+            new_rules.sus_deps.erase( orig_file );
         }
         if ( addFileAsDep ) {
-            bool actuallyInserted = new_rules.deps.insert( orig_file ).second;
+            bool actuallyInserted = new_rules.real_deps.insert( orig_file ).second;
             if ( !actuallyInserted ) {
                 continue;
             }
@@ -378,14 +380,14 @@ bool parseExistingRules( std::set<Rule> &all_rules, const std::vector<std::regex
             const Rule &previous_rule = *iter;
             // Cast away const since the deps of a rules don't impact the hash of the item in the set.
             Rule &editable_rules = const_cast<Rule &>( previous_rule );
-            deps = &editable_rules.deps;
+            deps = &editable_rules.real_deps;
         } else {
             // Rule is new, add it to the set;
             auto it = all_rules.emplace( rule_name );
             const Rule &emplaced_rule = *it.first;
             // Cast away const since the deps of a rules don't impact the hash of the item in the set.
             Rule &editable_rules = const_cast<Rule &>( emplaced_rule );
-            deps = &editable_rules.deps;
+            deps = &editable_rules.real_deps;
         }
 
         auto parseDepList = parseRule->dependency_list( );
@@ -504,14 +506,15 @@ int main( int argc, char *argv[] ) {
     waitpid( pid, &status, 0 );
     ptrace( PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESECCOMP | PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK );
 
+    Rule new_rule( task );
+
+    int childRet = traceBash( pid, pid, new_rule, ignore_files );
+
     std::set<Rule> all_rules; // TODO parse out previous rules.
     parseExistingRules( all_rules, ignore_files );
 
-    Rule new_rule( task );
-
-    int ret = traceBash( pid, pid, new_rule, ignore_files );
-
-    new_rule.deps.erase( new_rule.name ); // Don't set a rule depend on itself.
+    new_rule.real_deps.erase( new_rule.name ); // Don't set a rule depend on itself.
+    new_rule.sus_deps.erase( new_rule.name );  // Don't set a rule depend on itself.
 
     std::set<Rule>::iterator iter = all_rules.find( new_rule );
     if ( iter != all_rules.end( ) ) {
@@ -519,34 +522,55 @@ int main( int argc, char *argv[] ) {
         const Rule &previous_rule = *iter;
         // Cast away const since the deps of a rules don't impact the hash of the item in the set.
         Rule &editable_rules = const_cast<Rule &>( previous_rule );
-        editable_rules.deps.insert( new_rule.deps.begin( ), new_rule.deps.end( ) );
+        editable_rules.real_deps.insert( new_rule.real_deps.begin( ), new_rule.real_deps.end( ) );
+        editable_rules.sus_deps.insert( new_rule.sus_deps.begin( ), new_rule.sus_deps.end( ) );
     } else {
         // Rule is new, add it to the set;
         all_rules.insert( new_rule );
     }
 
     std::ofstream rep_dep_out( ".RepDep" );
+    std::set<std::string> all_deps;
     for ( const Rule &rule : all_rules ) {
-        if ( rule.deps.size( ) == 0 ) {
+        if ( rule.name.empty( ) ) {
+            // pr_debug_raw( "Empty: " );
+            // for ( const auto &dep : rule.deps ) {
+            //     pr_debug_raw( "%s ", dep.c_str( ) );
+            // }
+            // pr_debug( "" );
             continue;
         }
-        if ( rule.name.empty( ) ) {
-
-            pr_debug_raw( "Empty: " );
-            for ( const auto &dep : rule.deps ) {
-                pr_debug_raw( "%s ", dep.c_str( ) );
-            }
-            pr_debug( "" );
-        } else {
-            rep_dep_out << rule.name << ":";
-            for ( const auto &dep : rule.deps ) {
-                rep_dep_out << " " << dep;
-            }
-            rep_dep_out << std::endl;
+        int total_size = rule.real_deps.size( );
+        if ( childRet != 0 ) {
+            total_size += rule.sus_deps.size( );
         }
+        if ( total_size == 0 ) {
+            continue;
+        }
+
+        rep_dep_out << rule.name << ":";
+        for ( const auto &dep : rule.real_deps ) {
+            rep_dep_out << " " << dep;
+            all_deps.insert( dep );
+        }
+        if ( childRet != 0 ) {
+            rep_dep_out << "   ";
+            for ( const auto &dep : rule.sus_deps ) {
+                rep_dep_out << " " << dep;
+                all_deps.insert( dep );
+            }
+        }
+        rep_dep_out << std::endl;
     }
+
+    rep_dep_out << std::endl;
+    for ( const auto &dep : all_deps ) {
+        rep_dep_out << dep << ":" << std::endl;
+    }
+    rep_dep_out << std::endl;
+
     rep_dep_out.close( );
 
     // pr_debug( "Exiting with:%d (%s)", ret, strerror( ret ) );
-    return ret;
+    return childRet;
 }
