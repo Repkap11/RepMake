@@ -2,4 +2,4 @@ out
 src/antlr/.antlr/
 example/*.o
 example/example
-example/.RepDep
+example/RepDep.d

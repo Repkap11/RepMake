@@ -9,7 +9,7 @@ MAKEFLAGS += -k # Continue after failed targets as much as possible.
 all:
 	./example
 
--include .RepDep
+-include RepDep.d
 
 build: example
 

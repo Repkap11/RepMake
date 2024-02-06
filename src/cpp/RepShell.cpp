@@ -349,7 +349,7 @@ std::pair<char *, std::streampos> readEntireFile( const char *inputFile ) {
 }
 
 bool parseExistingRules( std::set<Rule> &all_rules, const std::vector<std::regex> &ignore ) {
-    const char *inputFile = ".RepDep";
+    const char *inputFile = "RepDep.d";
     auto inputBuffer = readEntireFile( inputFile );
     ANTLRInputStream input( inputBuffer.first, inputBuffer.second );
     delete[] inputBuffer.first;
@@ -529,7 +529,7 @@ int main( int argc, char *argv[] ) {
         all_rules.insert( new_rule );
     }
 
-    std::ofstream rep_dep_out( ".RepDep" );
+    std::ofstream rep_dep_out( "RepDep.d" );
     std::set<std::string> all_deps;
     for ( const Rule &rule : all_rules ) {
         if ( rule.name.empty( ) ) {

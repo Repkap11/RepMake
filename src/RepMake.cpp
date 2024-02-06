@@ -20,7 +20,7 @@ int main(int argc, const char* argv[]) {
 
     std::map<std::string, Rule> all_rules_map;
     bool error_flag = false;
-    const char* inputFiles[] = {"RepMake", ".RepDep"};
+    const char* inputFiles[] = {"RepMake", "RepDep.d"};
     for (const char* inputFile : inputFiles) {
         auto inputBuffer = readEntireFile(inputFile);
         ANTLRInputStream input(inputBuffer.first, inputBuffer.second);
@@ -76,7 +76,7 @@ int main(int argc, const char* argv[]) {
     }
     Rule::runTasksInOrder(targets_to_run, all_rules_map);
 
-    std::ofstream rep_dep_out(".RepDep");
+    std::ofstream rep_dep_out("RepDep.d");
     for (const auto& element : all_rules_map) {
         std::string rule_name = element.first;
         const Rule& rule = element.second;

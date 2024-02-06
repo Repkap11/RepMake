@@ -85,7 +85,7 @@ out/$(TARGET): $(OBJECTS)
 
 clean-example:
 	@cd example && make clean
-	rm example/.RepDep
+	rm example/RepDep.d
 
 vars:
 	@echo "$(BEFORE_VARS) $(AFTER_VARS)" | xargs -n1 | sort | uniq -u

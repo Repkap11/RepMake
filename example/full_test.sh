@@ -1,6 +1,6 @@
 #!/bin/bash
 make clean
-rm .RepDep
+rm -f RepDep.d
 
 echo
 echo "### Iterative Build ###"
