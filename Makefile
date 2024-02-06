@@ -15,9 +15,9 @@ CFLAGS_ANTLR = -std=c++11 -Wno-attributes
 CFLAGS_CPP = -Wall -Werror -Wextra -std=c++11 -Wno-unused-parameter -Wno-unused-variable -Wno-attributes -Wno-unused-function -Wno-overloaded-virtual
 
 CFLAGS_ANTLR += -O3
-CFLAGS_CPP += -O3
+# CFLAGS_CPP += -O3
 # CFLAGS_ANTLR += -g
-# CFLAGS_CPP += -g
+CFLAGS_CPP += -g
 # 
 
 OBJECTS = \

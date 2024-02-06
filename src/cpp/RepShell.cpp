@@ -17,6 +17,7 @@
 #include <sys/syscall.h>
 #include <sys/user.h>
 #include <sys/wait.h>
+#include <sys/file.h>
 #include <unistd.h>
 #include <sys/stat.h>
 
@@ -38,6 +39,8 @@
 
 using namespace antlr4;
 using namespace antlr4::tree;
+
+#define REP_DEP_FILE_NAME "RepDep.d"
 
 static void runBash( int argc, char *argv[] ) {
     // pr_debug_raw( "Bash args: " );
@@ -353,7 +356,7 @@ bool parseExistingRules( std::set<Rule> &all_rules, const std::vector<std::regex
     auto inputBuffer = readEntireFile( inputFile );
     ANTLRInputStream input( inputBuffer.first, inputBuffer.second );
     delete[] inputBuffer.first;
-    input.name = inputFile;
+    input.name = REP_DEP_FILE_NAME;
     RepShellLexer lexer( &input );
     CommonTokenStream tokens( &lexer );
     RepShellParser parser( &tokens );
@@ -510,6 +513,14 @@ int main( int argc, char *argv[] ) {
 
     int childRet = traceBash( pid, pid, new_rule, ignore_files );
 
+    int fd = open( REP_DEP_FILE_NAME, O_RDWR | O_CREAT, 0666 );
+    int rc = flock( fd, LOCK_EX );
+    if ( rc ) {
+        pr_debug( "Flock failed:%d errno:%d: %s", rc, errno, strerror( errno ) );
+        close( fd );
+        return rc;
+    }
+
     std::set<Rule> all_rules; // TODO parse out previous rules.
     parseExistingRules( all_rules, ignore_files );
 
@@ -554,7 +565,6 @@ int main( int argc, char *argv[] ) {
             all_deps.insert( dep );
         }
         if ( childRet != 0 ) {
-            rep_dep_out << "   ";
             for ( const auto &dep : rule.sus_deps ) {
                 rep_dep_out << " " << dep;
                 all_deps.insert( dep );
@@ -568,8 +578,9 @@ int main( int argc, char *argv[] ) {
         rep_dep_out << dep << ":" << std::endl;
     }
     rep_dep_out << std::endl;
-
     rep_dep_out.close( );
+    flock( fd, LOCK_UN );
+    close( fd );
 
     // pr_debug( "Exiting with:%d (%s)", ret, strerror( ret ) );
     return childRet;
