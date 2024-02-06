@@ -14,13 +14,13 @@ all:
 build: example
 
 example:
-	gcc example.o lib.o -o example
+	ccache gcc example.o lib.o -o example
 
 example.o:
-	gcc -c example.c -o example.o
+	ccache gcc -c example.c -o example.o
 
 lib.o:
-	gcc -c lib.c -o lib.o -I inc1 -I inc2
+	ccache gcc -c lib.c -o lib.o -I inc1 -I inc2
 
 clean:
 	rm -f *.o example

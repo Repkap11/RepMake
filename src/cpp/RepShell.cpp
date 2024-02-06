@@ -565,6 +565,7 @@ int main( int argc, char *argv[] ) {
             all_deps.insert( dep );
         }
         if ( childRet != 0 ) {
+            rep_dep_out << "    ";
             for ( const auto &dep : rule.sus_deps ) {
                 rep_dep_out << " " << dep;
                 all_deps.insert( dep );
@@ -572,7 +573,6 @@ int main( int argc, char *argv[] ) {
         }
         rep_dep_out << std::endl;
     }
-
     rep_dep_out << std::endl;
     for ( const auto &dep : all_deps ) {
         rep_dep_out << dep << ":" << std::endl;
