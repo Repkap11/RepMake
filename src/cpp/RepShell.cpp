@@ -60,8 +60,8 @@ static void runBash( int argc, char *argv[] ) {
         BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_TRACE ),
         BPF_JUMP( BPF_JMP + BPF_JEQ + BPF_K, SYS_execve, 0, 1 ),
         BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_TRACE ),
-        // BPF_JUMP( BPF_JMP + BPF_JEQ + BPF_K, SYS_newfstatat, 0, 1 ),
-        // BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_TRACE ),
+        BPF_JUMP( BPF_JMP + BPF_JEQ + BPF_K, SYS_newfstatat, 0, 1 ),
+        BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_TRACE ),
         BPF_JUMP( BPF_JMP + BPF_JEQ + BPF_K, SYS_unlinkat, 0, 1 ),
         BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_TRACE ),
         BPF_STMT( BPF_RET + BPF_K, SECCOMP_RET_ALLOW ),
@@ -147,6 +147,21 @@ long waitForSyscallRet( pid_t current_pid ) {
     return syscall_ret;
 }
 
+// Support nested trace?
+// https://stackoverflow.com/questions/2359581/calling-ptrace-inside-a-ptraced-linux-process
+static void sigchld_handler( int sig ) {
+    int result, status;
+    pid_t child_pid = wait( &status ); // find who send us this SIGCHLD
+
+    printf( "%d received SIGCHLD on %d\n", getpid( ), child_pid );
+    if ( WIFSTOPPED( status ) ) {
+        result = ptrace( PTRACE_CONT, child_pid, 0, WSTOPSIG( status ) );
+        if ( result ) {
+            perror( "continuing after SIGCHLD" );
+        }
+    }
+}
+
 static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std::vector<std::regex> &ignore ) {
     int status;
     const char **sysmap = getSysMap( );
@@ -194,7 +209,6 @@ static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std
         bool unTrackFile = false;
 
         bool mayBeTarget = false;
-
         if ( syscall == SYS_unlinkat ) {
             hasPathAddr = true;
             pathAddr = regs.rsi;
@@ -214,6 +228,15 @@ static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std
             hasPathAddr = true;
             pathAddr = regs.rdi;
             addFileAsDep = true;
+        } else if ( syscall == SYS_newfstatat ) {
+            bool isRelativeFile = ( int )regs.rdi == AT_FDCWD;
+            if ( !isRelativeFile ) {
+                // Not a relitive path, it's something strange give up.
+                continue;
+            }
+            hasPathAddr = true;
+            pathAddr = regs.rsi;
+            trackFile = true;
         } else if ( syscall == SYS_openat ) {
             bool isRelativeFile = ( int )regs.rdi == AT_FDCWD;
             if ( !isRelativeFile ) {
@@ -331,6 +354,7 @@ static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std
         // if ( isDelete ) {
         //     new_rules.deps.erase( orig_file );
         // }
+
         pr_debug( "Access: track:%d add:%d remove:%d dir:%d %s \"%s\"", trackFile, addFileAsDep, removeFileAsDep, isDir, sysmap[ syscall ], orig_file.c_str( ) );
     }
 }
