@@ -327,8 +327,14 @@ static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std
             }
         }
 
+        long syscall_ret = 0;
+        //TODO track all syscall_ret per file.
+        // if the final child fails:
+            //make all files sus deps
+        // if the file child success:
+            //only mark files that exist as sus deps
         if ( trackFile ) {
-            long syscall_ret = waitForSyscallRet( current_pid );
+            syscall_ret = waitForSyscallRet( current_pid );
             // pr_debug( "Tracking:%ld: %s", syscall_ret, orig_file.c_str( ) );
             fd_path_map[ syscall_ret ] = orig_file;
             new_rules.sus_deps.insert( orig_file ).second;
@@ -401,31 +407,51 @@ bool parseExistingRules( std::set<Rule> &all_rules, const std::vector<std::regex
 
         std::set<Rule>::iterator iter = all_rules.find( rule_name );
 
-        std::set<std::string> *deps;
+        std::set<std::string> *real_deps;
+        std::set<std::string> *sus_deps;
         if ( iter != all_rules.end( ) ) {
             // Already exists in rules, add the deps we found, if any.
             const Rule &previous_rule = *iter;
             // Cast away const since the deps of a rules don't impact the hash of the item in the set.
             Rule &editable_rules = const_cast<Rule &>( previous_rule );
-            deps = &editable_rules.real_deps;
+            real_deps = &editable_rules.real_deps;
+            sus_deps = &editable_rules.sus_deps;
         } else {
             // Rule is new, add it to the set;
             auto it = all_rules.emplace( rule_name );
             const Rule &emplaced_rule = *it.first;
             // Cast away const since the deps of a rules don't impact the hash of the item in the set.
             Rule &editable_rules = const_cast<Rule &>( emplaced_rule );
-            deps = &editable_rules.real_deps;
+            real_deps = &editable_rules.real_deps;
+            sus_deps = &editable_rules.sus_deps;
         }
 
-        auto parseDepList = parseRule->dependency_list( );
-        if ( parseDepList != NULL ) {
-            std::vector<RepShellParser::Rule_nameContext *> parseDeps = parseDepList->rule_name( );
-            for ( RepShellParser::Rule_nameContext *parseDep : parseDeps ) {
-                std::string parseDepName = parseDep->IDENTIFIER( )->getText( );
-                if ( matchsAnyIgnore( parseDepName, ignore ) ) {
+        auto parseRealDepList = parseRule->real_dependency_list( );
+        if ( parseRealDepList != NULL ) {
+            std::vector<RepShellParser::Rule_nameContext *> parseRealDeps = parseRealDepList->rule_name( );
+            for ( RepShellParser::Rule_nameContext *parseRealDep : parseRealDeps ) {
+                std::string parseRealDepName = parseRealDep->IDENTIFIER( )->getText( );
+                if ( matchsAnyIgnore( parseRealDepName, ignore ) ) {
                     continue;
                 }
-                deps->insert( parseDepName );
+                // pr_debug( "Dep for rule \"%s\": \"%s\" real", rule_name.c_str( ), parseRealDepName.c_str( ) );
+                real_deps->insert( parseRealDepName );
+            }
+        }
+        auto parseSusDepList = parseRule->sus_dependency_list( );
+        if ( parseSusDepList != NULL ) {
+            std::vector<RepShellParser::Rule_nameContext *> parseSusDeps = parseSusDepList->rule_name( );
+            for ( RepShellParser::Rule_nameContext *parseSusDep : parseSusDeps ) {
+                std::string parseSusDepName = parseSusDep->IDENTIFIER( )->getText( );
+                if ( matchsAnyIgnore( parseSusDepName, ignore ) ) {
+                    continue;
+                }
+                if ( real_deps->find( parseSusDepName ) != real_deps->end( ) ) {
+                    // pr_debug( "Dep for rule \"%s\": \"%s\" DUPE", rule_name.c_str( ), parseSusDepName.c_str( ) );
+                    continue;
+                }
+                // pr_debug( "Dep for rule \"%s\": \"%s\" sus", rule_name.c_str( ), parseSusDepName.c_str( ) );
+                sus_deps->insert( parseSusDepName );
             }
         }
     }
@@ -566,6 +592,9 @@ int main( int argc, char *argv[] ) {
 
     std::ofstream rep_dep_out( "RepDep.d" );
     std::set<std::string> all_deps;
+
+    rep_dep_out << ".PHONY: REP_SPACE" << std::endl;
+
     for ( const Rule &rule : all_rules ) {
         if ( rule.name.empty( ) ) {
             // pr_debug_raw( "Empty: " );
@@ -589,10 +618,12 @@ int main( int argc, char *argv[] ) {
             all_deps.insert( dep );
         }
         if ( childRet != 0 ) {
-            rep_dep_out << "    ";
-            for ( const auto &dep : rule.sus_deps ) {
-                rep_dep_out << " " << dep;
-                all_deps.insert( dep );
+            if ( rule.sus_deps.size( ) > 0 ) {
+                rep_dep_out << " REP_SPACE";
+                for ( const auto &dep : rule.sus_deps ) {
+                    rep_dep_out << " " << dep;
+                    all_deps.insert( dep );
+                }
             }
         }
         rep_dep_out << std::endl;

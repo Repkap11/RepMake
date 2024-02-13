@@ -10,7 +10,7 @@
                 "lib.o",
                 "--",
                 "-c",
-                "ccache gcc example.o lib.o -o example"
+                "ccache gcc -c lib.c -o lib.o -I inc1 -I inc2"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceRoot}/example",

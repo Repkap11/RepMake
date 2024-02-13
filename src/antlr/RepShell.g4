@@ -11,16 +11,17 @@ IDENT: NEW_LINE (SPACES | '\t'+);
 IDENTIFIER: [a-zA-Z0-9_./-]+;
 
 NEW_LINE: [\r?\n];
-SPACES: ' '+;
+SPACES: ' ';
 TASK_CHARS: .+?;
 
 // Parse
 repshell: (rep_shell_rule | IDENT | NEW_LINE | SPACES)* EOF;
 
 rep_shell_rule:
-	NEW_LINE rule_name SPACES? ':' SPACES? dependency_list? IDENT? tasks? NEW_LINE?;
+	NEW_LINE rule_name SPACES? ':' SPACES? real_dependency_list? SPACES? ('REP_SPACE' SPACES? sus_dependency_list?)? SPACES? IDENT? tasks? NEW_LINE?;
 
-dependency_list: rule_name (rule_name)*?;
+real_dependency_list: rule_name (rule_name)*?;
+sus_dependency_list: rule_name (rule_name)*?;
 
 tasks: (IDENT task)+;
 

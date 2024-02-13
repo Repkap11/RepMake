@@ -2,7 +2,7 @@ OLD_SHELL := $(SHELL)
 SHELL = ../out/RepShell \
 		--ignore libgcc_s.so.1 \
 		--shell $(OLD_SHELL) \
-		--task $@  --
+		--task $@ -- 
 MAKEFLAGS += --jobs=12
 MAKEFLAGS += -k # Continue after failed targets as much as possible.
 
