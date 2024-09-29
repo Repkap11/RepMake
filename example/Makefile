@@ -3,8 +3,14 @@ SHELL = ../out/RepShell \
 		--ignore libgcc_s.so.1 \
 		--shell $(OLD_SHELL) \
 		--task $@ -- 
+
+# Continue after failed targets as much as possible.
+# This allows the build to make progress 1 depth layer at a time,
+# instead of 1 at a time.
+MAKEFLAGS += -k 
+
+## Normal makefile without dependencies below
 MAKEFLAGS += --jobs=12
-MAKEFLAGS += -k # Continue after failed targets as much as possible.
 
 all:
 	./example

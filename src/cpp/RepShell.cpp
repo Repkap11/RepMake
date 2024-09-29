@@ -294,7 +294,7 @@ static int traceBash( pid_t child, pid_t current_pid, Rule &new_rules, const std
             // char resolved_path[ PATH_MAX ];
             // realpath( orig_file, resolved_path );
             // const char *prefix_strs[] = { "/tmp/", "/usr/", "/etc/", "/lib/", "/dev/", "/sys/", "/proc/", "/run/", "/snap/", NULL };
-            std::vector<std::string> prefix_strs = { "/" }; // any nont relative files.
+            std::vector<std::string> prefix_strs = { "/" }; // any non relative files.
             // const char* prefix_strs[] = {NULL};
             if ( str_startsWith( orig_file, prefix_strs ) ) {
                 // Starts with a path we don't care about.
